@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  api-prd:
+    container_name: Payroll-worker-prd
+    image: payrollworkerprd
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+      target: production
+    ports:
+      - '3001:3001'
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
