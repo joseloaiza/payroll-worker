@@ -4,8 +4,6 @@ ARG IMAGE=node:20-alpine
 ###################################### base builder Stage #############
 FROM ${IMAGE} AS builder
 WORKDIR /app
-RUN apk add --no-cache python3 make g++ redis curl
-RUN apk add --no-cache openssl ca-certificates
 
 # Copy package.json and lock
 COPY package*.json ./
@@ -32,8 +30,6 @@ RUN yarn run build
 FROM ${IMAGE} AS runtime
 
 WORKDIR /app
-RUN apk add --no-cache redis
-RUN apk add --no-cache openssl ca-certificates
 USER node
 # Copy only what’s needed from builder
 COPY --chown=node:node --from=builder /app/node_modules node_modules
