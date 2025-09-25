@@ -8,8 +8,8 @@ import { Concept } from '../entities/concept.entity';
 @Injectable()
 export class ConceptsService {
   constructor(
-    // @Inject(CACHE_MANAGER)
-    // private readonly cacheManager: Cache,
+    @Inject(CACHE_MANAGER)
+    private readonly cacheManager: Cache,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
     private readonly repo: ConceptRepository,
@@ -21,20 +21,21 @@ export class ConceptsService {
   }> {
     const cacheKey = `concepts-${companyId}`;
     try {
-      // const cachedData = await this.cacheManager.get<{
-      //   concepts: Concept[];
-      //   conceptMap: Map<string, string>;
-      // }>(cacheKey);
+      const cachedData = await this.cacheManager.get<{
+        concepts: Concept[];
+        conceptMap: Map<string, string>;
+      }>(cacheKey);
 
-      // if (cachedData) {
-      //   // Convert the serialized conceptMap back to a Map
-      //   const conceptMap = new Map(Object.entries(cachedData.conceptMap));
-      //   return {
-      //     concepts: cachedData.concepts,
-      //     conceptMap: conceptMap,
-      //   };
-      // }
-
+      if (cachedData) {
+        // Convert the serialized conceptMap back to a Map
+        this.logger.debug('Cache hit for concepts');
+        const conceptMap = new Map(Object.entries(cachedData.conceptMap));
+        return {
+          concepts: cachedData.concepts,
+          conceptMap: conceptMap,
+        };
+      }
+      this.logger.debug('Cache miss → loading concepts from DB ');
       const concepts = await this.repo.getConceptsByCompany(companyId);
       const conceptMap: Map<string, string> = new Map(
         concepts.map((c) => [c.code, c.id]),
@@ -45,11 +46,10 @@ export class ConceptsService {
         conceptMap: Object.fromEntries(conceptMap),
       };
 
-      //await this.cacheManager.set(cacheKey, cacheData);
-
+      await this.cacheManager.set(cacheKey, cacheData);
       return { concepts, conceptMap };
     } catch (error) {
-      this.logger.error('Failed to get company concepts', error.stack);
+      this.logger.error('Failed to get company concepts ', error.stack);
       throw error;
     }
   }

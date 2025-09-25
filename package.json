@@ -20,6 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@azure/service-bus": "^7.9.5",
+    "@keyv/redis": "^5.1.2",
     "@nestjs/cache-manager": "^3.0.1",
     "@nestjs/cli": "10.2.1",
     "@nestjs/common": "10.2.9",

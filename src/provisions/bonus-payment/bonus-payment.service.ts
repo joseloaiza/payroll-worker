@@ -94,11 +94,13 @@ export class BonusPaymentService {
         previusBonusDays = previusMonthBalance.quantity;
         previusBonusValue = previusMonthBalance.value;
       }
-      const { quantity: bonusPayedDays } = movbonusPayedDays;
+      const { quantity: bonusPayedDays, value: bonusPayedValue } =
+        movbonusPayedDays;
       const totalBonusProvisionDays =
         bonusProvisionDays + bonusPayedDays - previusBonusDays;
       const totalBonusPorvisionvalue =
-        totalBonusProvisionDays * (bonusProvisionBase / 30);
+        bonusProvisionValue + bonusPayedValue - previusBonusValue;
+      //totalBonusProvisionDays * (bonusProvisionBase / 30);
 
       const movementData = [
         {

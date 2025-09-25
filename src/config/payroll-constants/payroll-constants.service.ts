@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  OnApplicationBootstrap,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Cache } from 'cache-manager';
@@ -12,9 +18,10 @@ export interface PayrollConstantsDto {
 }
 
 @Injectable()
-export class PayrollConstantsService implements OnModuleInit {
+export class PayrollConstantsService implements OnApplicationBootstrap {
   private readonly cacheKey = 'payroll_constans:all';
   private readonly logger = new Logger(PayrollConstantsService.name);
+  private loadPromise: Promise<PayrollConstants[]> = null;
   private constants: Record<string, number>;
 
   constructor(
@@ -23,7 +30,7 @@ export class PayrollConstantsService implements OnModuleInit {
     @Inject(CACHE_MANAGER)
     private readonly cacheManager: Cache,
   ) {}
-  async onModuleInit() {
+  async onApplicationBootstrap() {
     try {
       await this.loadConstants();
       this.logger.log('Constants loaded successfully');
@@ -36,20 +43,38 @@ export class PayrollConstantsService implements OnModuleInit {
    * Loads constants from the database into memory.
    * Can be called manually if the constants need to be refreshed dynamically.
    */
-  async loadConstants(): Promise<void> {
-    const constants = await this.payrollConstantsRepository.find();
-    await this.cacheManager.set(this.cacheKey, constants, 36000); // 1 hour TTL
+  async loadConstants(): Promise<PayrollConstants[]> {
+    if (this.loadPromise) {
+      return this.loadPromise; // return pending promise if already loading
+    }
+    this.loadPromise = (async () => {
+      try {
+        const constants = await this.payrollConstantsRepository.find();
+
+        await this.cacheManager.set(this.cacheKey, constants); // 1 hour TTL
+        //this.logger.warn(`Cache set: ${constants.length} items`);
+        return constants;
+      } catch (error) {
+        throw new InternalServerErrorException(error);
+      } finally {
+        this.loadPromise = null; // reset after finished
+      }
+    })();
+    return this.loadPromise;
+    // const constants = await this.payrollConstantsRepository.find();
+    // await this.cacheManager.set(this.cacheKey, constants, 36000); // 1 hour TTL
   }
 
   async getConstants(): Promise<PayrollConstants[]> {
     const cache = await this.cacheManager.get<PayrollConstants[]>(
       this.cacheKey,
     );
-
-    if (cache) return cache;
-    const constants = await this.payrollConstantsRepository.find();
-    await this.cacheManager.set(this.cacheKey, constants, 36000); // 1 hour TTL
-    return constants;
+    if (Array.isArray(cache) && cache.length > 0) {
+      //this.logger.debug('Cache hit for constants');
+      return cache;
+    }
+    //this.logger.debug('Cache miss → loading constants from DB ');
+    return this.loadConstants();
   }
 
   async getConstantValue(id: string): Promise<number> {
@@ -87,22 +112,6 @@ export class PayrollConstantsService implements OnModuleInit {
       if (constant === undefined) {
         throw new Error(`Missing constant for code  "${code}"`);
       }
-      // let parsedValue: string | number | Date;
-      // switch (constant.type.toLowerCase()) {
-      //   case 'number':
-      //     parsedValue = Number(constant.value);
-      //     break;
-      //   case 'string':
-      //     parsedValue = String(constant.value);
-      //     break;
-      //   case 'date':
-      //     parsedValue = new Date(constant.value);
-      //     break;
-      //   default:
-      //     throw new Error(
-      //       `Unsupported constant type "${constant.type}" for code "${constant.id}"`,
-      //     );
-      // }
 
       result[alias] = Number(constant.value);
     }

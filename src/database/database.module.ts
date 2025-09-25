@@ -23,8 +23,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
           //entities: [__dirname + '/../**/*.entity{.ts,.js}'],
           ssl: sslEnabled ? { rejectUnauthorized: false } : false,
           synchronize: false,
+          retryAttempts: 5,
           etryAttempts: 5,
           retryDelay: 3000,
+          // 👇 Add connection pool + keepAlive
+          extra: {
+            ssl: sslEnabled ? { rejectUnauthorized: false } : undefined,
+            keepAlive: true,
+            connectionTimeoutMillis: 10000, // 10s
+            idleTimeoutMillis: 30000, // 30s
+            max: 10, // pool size
+          },
           // Enable logging for debugging
           logging: true,
         };

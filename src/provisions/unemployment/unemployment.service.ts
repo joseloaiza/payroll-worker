@@ -86,13 +86,17 @@ export class UnemploymentService {
 
       const { totalQuantity: previousDays, totalValue: previousValue } =
         previusBalance;
-      const { quantity: unemployedPayedDays } = payedDays;
+      const { quantity: unemployedPayedDays, value: unemployedPayedValue } =
+        payedDays;
       const { days: provisionDays, value: provisionValue } =
         this.calculateProvision(
           unpaidDays,
           previousDays,
           unemployedPayedDays,
-          baseVariableConcepts,
+          unpaidValue, //newValue
+          previousValue, // previusValue
+          unemployedPayedValue, // value payed
+          //baseVariableConcepts,
         );
 
       const movementData: MovementData[] = [
@@ -214,12 +218,16 @@ export class UnemploymentService {
         totalValue: previousInterestValue,
       } = previusMonthInterest;
 
-      const { quantity: unemployedInterestPayedDays } = InterestPayedDays;
+      const {
+        quantity: unemployedInterestPayedDays,
+        value: unemployedInterestPayedValue,
+      } = InterestPayedDays;
 
       const provisionInterestDays =
         interestDays + unemployedInterestPayedDays - previousInterestDays;
       const provisionInterestValue =
-        provisionInterestDays * (interestBaseValue / 30);
+        interestValue + unemployedInterestPayedValue - previousInterestValue;
+      //provisionInterestDays * (interestBaseValue / 30);
 
       const movementData: MovementData[] = [
         {
@@ -286,10 +294,14 @@ export class UnemploymentService {
     unpaidDays: number,
     previousDays: number,
     unemploymentPayedDays: number,
-    baseVariableConcepts: number,
+    unpaidValue: number,
+    previousValue: number,
+    unemployedPayedValue: number,
+    //baseVariableConcepts: number,
   ): { days: number; value: number } {
     const provisionDays = unpaidDays - previousDays - unemploymentPayedDays;
-    const provisionValue = provisionDays * (baseVariableConcepts / 30);
+    const provisionValue = unpaidValue + unemployedPayedValue - previousValue;
+    //const provisionValue = provisionDays * (baseVariableConcepts / 30);
     return { days: provisionDays, value: provisionValue };
   }
 

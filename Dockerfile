@@ -1,46 +1,48 @@
+
 ARG IMAGE=node:20-alpine
-###################################### development build Stage #############
-FROM ${IMAGE} as  development
+
+###################################### base builder Stage #############
+FROM ${IMAGE} AS builder
 WORKDIR /app
-# Copy package.json and package-lock.json
+RUN apk add --no-cache python3 make g++ redis curl
+RUN apk add --no-cache openssl ca-certificates
+
+# Copy package.json and lock
 COPY package*.json ./
 
-
+# Install deps (prod or dev depending on build arg)
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
 # Install dependencies
-RUN yarn install
+# - dev → install everything
+# - test/prod → install only prod deps
+RUN if [ "$NODE_ENV" = "development" ]; then \
+      yarn install; \
+    else \
+      yarn install --only=production; \
+    fi
+
 # Copy the source code
 COPY . .
-#expose ports
-EXPOSE 3001 9229
 # Build the app to the /dist folder
 RUN yarn run build
 
-###################################### prod build Stage #############
+###################################### final runtime stage #############
 
-FROM ${IMAGE} as  builder_prd
+FROM ${IMAGE} AS runtime
 
-ENV NODE_ENV production
 WORKDIR /app
-# Copy package.json and package-lock.json
-COPY package*.json ./
-
-# Install dependencies
-RUN yarn install --only=production
-# Copy the source code
-COPY . .
-RUN yarn run build
+RUN apk add --no-cache redis
+RUN apk add --no-cache openssl ca-certificates
 USER node
+# Copy only what’s needed from builder
+COPY --chown=node:node --from=builder /app/node_modules node_modules
+COPY --chown=node:node --from=builder /app/dist dist
 
-###################################### production build Stage #############
-FROM ${IMAGE} AS production
-ENV NODE_ENV=production
+# Always expose app port
 EXPOSE 3001
-WORKDIR /app
-COPY --chown=node:node --from=builder_prd /app/node_modules node_modules
-COPY --chown=node:node --from=builder_prd /app/dist dist
-COPY --chown=node:node --from=builder_prd /app/.env.production .env.production
-USER node
 CMD [ "node","dist/main.js" ]
+
 
 
 
