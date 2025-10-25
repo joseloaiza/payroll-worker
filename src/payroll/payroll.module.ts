@@ -17,6 +17,7 @@ import { ConceptRepository } from './concepts/concepts.repository';
 import { Concept } from './entities/concept.entity';
 import { CompanyModule } from 'src/company/company.module';
 import { AbsenteeHistory } from 'src/novelties/entities/absenteeHistory.entity';
+import { VacationsService } from 'src/provisions/vacations/vacations.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AbsenteeHistory } from 'src/novelties/entities/absenteeHistory.entity';
     BonusPaymentService,
     AbsenteeHistoryRepository,
     ConceptRepository,
+    VacationsService,
   ],
 })
 export class PayrollModule {}

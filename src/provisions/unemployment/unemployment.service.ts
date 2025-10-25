@@ -41,7 +41,7 @@ export class UnemploymentService {
         workedDays,
         baseVariableConcepts,
         alreadyPaidDays,
-        previusBalance,
+        previousBalance,
         payedDays,
       ] = await Promise.all([
         // worked days save in concept /133
@@ -64,15 +64,16 @@ export class UnemploymentService {
             ['code']: 'M033',
           },
         ),
-        this.calculateUnemploymentPreviusMonth(
+        this.getUnemploymentPreviousPeriod(
           employeeId,
-          period.number - 1,
+          period.previousPeriodYear,
+          period.previousPeriodNumber,
           unemploymentCodes.newValue,
-          regimeCode,
         ),
-        this.movementService.getQuantityAndValue(
+        this.movementService.getMovementQuantityAndValue(
           unemploymentCodes.previousValue,
           employeeId,
+          period.year,
           period.number,
         ),
       ]);
@@ -85,7 +86,7 @@ export class UnemploymentService {
       const unpaidValue = unpaidDays * (baseProvision / 30); //save in cocep /136 value
 
       const { totalQuantity: previousDays, totalValue: previousValue } =
-        previusBalance;
+        previousBalance;
       const { quantity: unemployedPayedDays, value: unemployedPayedValue } =
         payedDays;
       const { days: provisionDays, value: provisionValue } =
@@ -188,15 +189,16 @@ export class UnemploymentService {
             ['code']: 'M034',
           },
         ),
-        this.calculateUnemploymentPreviusMonth(
+        this.getUnemploymentPreviousPeriod(
           employeeId,
-          period.number - 1,
+          period.previousPeriodYear,
+          period.previousPeriodNumber,
           interestUnemploymentCodes.interestNew,
-          regimeCode,
         ),
-        this.movementService.getQuantityAndValue(
+        this.movementService.getMovementQuantityAndValue(
           interestUnemploymentCodes.unemployedInterestPayed,
           employeeId,
+          period.year,
           period.number,
         ),
       ]);
@@ -373,24 +375,21 @@ export class UnemploymentService {
     );
   }
 
-  private async calculateUnemploymentPreviusMonth(
+  private async getUnemploymentPreviousPeriod(
     employee_id: string,
-    beforePeriod: number,
+    year: number,
+    previousPeriodNumber: number,
     concept_new_balance: string,
-    contract_regime: string,
   ): Promise<{ totalQuantity: number; totalValue: number }> {
-    const shouldCalculate =
-      beforePeriod > 0 ||
-      contract_regime !== (await this.codesConfigService.getCodeById('0060'));
-
-    if (!shouldCalculate) {
+    if (previousPeriodNumber > 0) {
       return { totalQuantity: 0, totalValue: 0 };
     }
 
     const movement =
       await this.movementService.getMovementByConceptAndPeriodNumber(
         employee_id,
-        beforePeriod,
+        year,
+        previousPeriodNumber,
         concept_new_balance,
       );
     if (movement === null) {

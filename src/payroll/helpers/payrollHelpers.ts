@@ -40,7 +40,7 @@ export function calculateWorkedDays(
   }
 
   // Calculate number of days
-  let workedDays = differenceInDays(end, start);
+  let workedDays = differenceInDays(end, start) + 1;
 
   /// Normalize February (28/29) to 30
   if (workedDays === 28 || workedDays === 29) {
@@ -53,4 +53,12 @@ export function calculateWorkedDays(
   }
 
   return workedDays;
+}
+
+export function getRealEndDatePeriod(endPeriod: Date): Date {
+  const newEndDatePeriod =
+    endPeriod.getDate() === 15
+      ? new Date(endPeriod)
+      : new Date(endPeriod.getFullYear(), endPeriod.getMonth(), 30);
+  return newEndDatePeriod;
 }

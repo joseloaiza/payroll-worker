@@ -131,6 +131,34 @@ export class MovementsService {
     );
   }
 
+  async getSumMovementsValuesBetweenDates(
+    employeeId: string,
+    iniDate: Date,
+    endDate: Date,
+    queryString: object,
+  ): Promise<number> {
+    return this.repo.getSumMovementsValuesBetweenDates(
+      employeeId,
+      iniDate,
+      endDate,
+      queryString,
+    );
+  }
+
+  async getSumMovementsQuantitiesBetweenDates(
+    employeeId: string,
+    iniDate: Date,
+    endDate: Date,
+    queryString: object,
+  ): Promise<number> {
+    return this.repo.getSumMovementsQuantitiesBetweenDates(
+      employeeId,
+      iniDate,
+      endDate,
+      queryString,
+    );
+  }
+
   async getSumOfMonthlyMovementsByConcept(
     employeeId: string,
     year: number,
@@ -171,11 +199,13 @@ export class MovementsService {
 
   async getMovementByConceptAndPeriodNumber(
     employeeId: string,
+    year: number,
     periodNumber: number,
     code: string,
   ): Promise<Movement> {
     const movement = await this.repo.getMovementByConceptAndPeriodNumber(
       employeeId,
+      year,
       periodNumber,
       code,
     );
@@ -191,14 +221,16 @@ export class MovementsService {
     return this.repo.getMovementsAffectingntiquity(month, year, employee_id);
   }
 
-  async getQuantityAndValue(
+  async getMovementQuantityAndValue(
     concep: string,
     employee_id: string,
+    year: number,
     period_number: number,
   ): Promise<{ quantity: number; value: number }> {
     const movement = await this.getMovementByConceptAndPeriodNumber(
       employee_id,
-      period_number - 1,
+      year,
+      period_number,
       concep,
     );
 

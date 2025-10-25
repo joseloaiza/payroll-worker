@@ -13,12 +13,14 @@ export interface PayrollContext {
   employeeId: string;
   companyId: string;
   period: Period;
+  realEndDatePeriod: Date;
   totalWorkindays: number;
   totalAbseenteDays: number;
   excess1393: number;
   totalBaseCree: number;
   ibcSocialSecurity: number;
   rawSalary: number;
+  vacationHistory: number;
   salaryData: {
     salary: number;
     salaryTypeCode: string;

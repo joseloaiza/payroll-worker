@@ -70,6 +70,7 @@ export const LoggerFactory = (appName: string) => {
     zippedArchive: true,
     maxSize: '50m',
     maxFiles: '30d',
+    level: 'error',
   });
 
   // Development Transport: Verbose console
@@ -77,24 +78,57 @@ export const LoggerFactory = (appName: string) => {
     format: consoleFormat,
   });
 
+  // New transport for production console logging
+  const productionConsoleTransport = new winston.transports.Console({
+    format: winston.format.combine(
+      // Use JSON format for production for easier parsing
+      winston.format.ms(),
+      winston.format.timestamp(),
+      winston.format.json(),
+    ),
+    // Level is info for production console logging
+    level: 'info',
+  });
+
+  // Create the logger instance PROPERLY
+  const transportsArray: winston.transport[] = [productionConsoleTransport];
+
+  if (!isProduction) {
+    // In development, add the colorful console transport
+    transportsArray.push(consoleTransport);
+  }
+  // Always add the file transport, regardless of environment
+  transportsArray.push(productionTransport);
+
+  // You should also consider adding the info daily rotate file in production as well
+  transportsArray.push(
+    new winston.transports.DailyRotateFile({
+      filename: 'app-%DATE%.log',
+      dirname: logDir,
+      format: fileFormat,
+      maxSize: '100m',
+      maxFiles: '7d',
+    }),
+  );
+
   // Create the logger instance PROPERLY
   return {
     level: isProduction ? 'info' : 'debug',
-    transports: [
-      ...(isProduction ? [productionTransport] : [consoleTransport]),
-      // Additional info logs in develop (separate file)
-      ...(!isProduction
-        ? [
-            new winston.transports.DailyRotateFile({
-              filename: 'app-%DATE%.log',
-              dirname: logDir,
-              format: fileFormat,
-              maxSize: '100m',
-              maxFiles: '7d',
-            }),
-          ]
-        : []),
-    ],
+    transports: transportsArray, //[
+    //   ...(isProduction ? [productionTransport] : [consoleTransport]),
+    //   // Additional info logs in develop (separate file)
+    //   ...(!isProduction
+    //     ? [
+    //         new winston.transports.DailyRotateFile({
+    //           filename: 'app-%DATE%.log',
+    //           dirname: logDir,
+    //           format: fileFormat,
+    //           maxSize: '100m',
+    //           maxFiles: '7d',
+    //         }),
+    //       ]
+    //     : []),
+    //],
     exceptionHandlers: [
       new winston.transports.DailyRotateFile({
         filename: path.join(logDir, 'exceptions.log'),

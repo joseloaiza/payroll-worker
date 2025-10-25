@@ -41,7 +41,7 @@ export class BonusPaymentService {
         workedDays,
         sumBaseConcepts,
         movBonusAlreadyPaid,
-        previusMonthBalance,
+        previousMonthBalance,
         movbonusPayedDays,
       ] = await Promise.all([
         // Step 1: Calculate worked days (used in provision calculation) /133
@@ -69,14 +69,16 @@ export class BonusPaymentService {
           period.month,
           bonusPaymentCodes.paidBonusConcept,
         ),
-        this.movementsService.getQuantityAndValue(
+        this.movementsService.getMovementQuantityAndValue(
           bonusPaymentCodes.provisionValue,
           employeeId,
-          period.number - 1,
+          period.previousPeriodYear,
+          period.previousPeriodNumber,
         ),
-        this.movementsService.getQuantityAndValue(
-          bonusPaymentCodes.bonusAlreryPay,
+        this.movementsService.getMovementQuantityAndValue(
+          bonusPaymentCodes.bonusAlrearyPaid,
           employeeId,
+          period.year,
           period.number,
         ),
       ]);
@@ -89,17 +91,17 @@ export class BonusPaymentService {
       const bonusProvisionValue =
         bonusProvisionDays * (bonusProvisionBase / 30);
       // Step 7: Calculate balance before month
-      let previusBonusDays, previusBonusValue;
+      let previousBonusDays, previousBonusValue;
       if (period.number - 1 > 0) {
-        previusBonusDays = previusMonthBalance.quantity;
-        previusBonusValue = previusMonthBalance.value;
+        previousBonusDays = previousMonthBalance.quantity;
+        previousBonusValue = previousMonthBalance.value;
       }
       const { quantity: bonusPayedDays, value: bonusPayedValue } =
         movbonusPayedDays;
       const totalBonusProvisionDays =
-        bonusProvisionDays + bonusPayedDays - previusBonusDays;
+        bonusProvisionDays + bonusPayedDays - previousBonusDays;
       const totalBonusPorvisionvalue =
-        bonusProvisionValue + bonusPayedValue - previusBonusValue;
+        bonusProvisionValue + bonusPayedValue - previousBonusValue;
       //totalBonusProvisionDays * (bonusProvisionBase / 30);
 
       const movementData = [
@@ -129,8 +131,8 @@ export class BonusPaymentService {
           code: bonusPaymentCodes.provisionValue,
         },
         {
-          days: previusBonusDays,
-          value: previusBonusValue,
+          days: previousBonusDays,
+          value: previousBonusValue,
           code: bonusPaymentCodes.previusBunus,
         },
         {

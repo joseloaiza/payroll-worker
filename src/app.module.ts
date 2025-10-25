@@ -6,7 +6,7 @@ import { PayrollModule } from './payroll/payroll.module';
 import { CodesConfigModule } from './config/codes-config.module';
 import { DatabaseModule } from './database/database.module';
 import configuration from './config/config';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { WinstonModule } from 'nest-winston';
 import { LoggerFactory } from './common/logger/logger-factory';
 import { EmployeeModule } from './employee/employee.module';
@@ -17,7 +17,7 @@ import { ProvisionsModule } from './provisions/provisions.module';
 import { CompanyModule } from './company/company.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { CACHE_MANAGER, CacheModule } from '@nestjs/cache-manager';
-import { redisStore } from 'cache-manager-redis-store';
+//import { redisStore } from 'cache-manager-redis-store';
 import { Cache } from 'cache-manager';
 
 @Module({

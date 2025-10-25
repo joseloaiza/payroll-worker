@@ -10,6 +10,7 @@ import { PayrollConstantsService } from './../config/payroll-constants/payroll-c
 import { UnemploymentService } from './../provisions/unemployment/unemployment.service';
 import { BonusPaymentService } from './../provisions/bonus-payment/bonus-payment.service';
 import { SocialSecurityService } from './../social-security/social-security.service';
+import { VacationsService } from './../provisions/vacations/vacations.service';
 import { Period } from './entities/period.entity';
 import { Movement } from './../movements/entities/movement.entity';
 import {
@@ -26,10 +27,12 @@ import { Concept } from './entities/concept.entity';
 import {
   buildMovementData,
   calculateWorkedDays,
+  getRealEndDatePeriod,
 } from './helpers/payrollHelpers';
 import { getConceptCodes } from 'src/utils/concepts.utils';
 import {
   CONCEPT_IDS_EXCESS1393,
+  CONCEPT_IDS_REGIME,
   CONCEPT_IDS_SALARY,
   CONCEPT_IDS_TRANSPORT,
   CONSTANTS_IDS_TRANSPORT,
@@ -48,6 +51,7 @@ export class PayrollService {
     private readonly bonusPaymentService: BonusPaymentService,
     private readonly codesConfigService: CodesConfigService,
     private readonly payrollConstantsService: PayrollConstantsService,
+    private readonly vacationsService: VacationsService,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
@@ -62,6 +66,8 @@ export class PayrollService {
           ? new Date(rawPeriod.initialDate)
           : null,
         endDate: rawPeriod.endDate ? new Date(rawPeriod.endDate) : null,
+        previousPeriodYear: rawPeriod.previousPeriodYear,
+        previousPeriodNumber: rawPeriod.previousPeriodNumber,
       };
       const context = await this.buildPayrollContext(
         employeeId,
@@ -99,6 +105,11 @@ export class PayrollService {
         conceptsCompany.conceptMap,
         movementContext,
       );
+      await this.calculateVacationsProvisions(
+        context,
+        conceptsCompany.conceptMap,
+        movementContext,
+      );
     } catch (error) {
       this.logger.error(
         `Payroll calculation failed for employee ${employeeId}: ${error.message}`,
@@ -123,28 +134,21 @@ export class PayrollService {
       throw new PayrollValidationError('Employee not found');
     }
 
-    // Validate and extract all required data
-    // if (!activeSalary) {
-    //   this.logger.error(`No active salary for employee ${employeeId}`);
-    //   throw new PayrollValidationError('No active salary found for employee');
-    // }
-
-    // const contract = employee.contracts.find((em) => em.isActive);
-    // if (!contract) {
-    //   this.logger.error(`No contract salary for employee ${employeeId}`);
-    //   throw new PayrollValidationError('No active contract found for employee');
-    // }
+    const realEndDatePeriod = getRealEndDatePeriod(period.endDate);
+    period.endDate = realEndDatePeriod;
 
     return {
       employeeId,
       companyId,
       period,
+      realEndDatePeriod: realEndDatePeriod,
       totalWorkindays: 0,
       totalAbseenteDays: 0,
       rawSalary: 0,
       excess1393: 0,
       totalBaseCree: 0,
       ibcSocialSecurity: 0,
+      vacationHistory: employee.vacationHistory,
       salaryData: {
         salary: employee.salary,
         salaryTypeCode: employee.salaryTypeCode,
@@ -256,7 +260,12 @@ export class PayrollService {
         conceptsMap,
       ),
     ]);
-    calculateMovements.addMovements(socialSecutityCalcualtions.flat());
+
+    calculateMovements.addMovements(
+      socialSecutityCalcualtions
+        .flat()
+        .filter((m): m is Movement => m !== null),
+    );
     //save movements
     const mutableMovements = [...calculateMovements.movements];
     await this.movementService.saveMovements(mutableMovements);
@@ -275,7 +284,10 @@ export class PayrollService {
       this.calculateTransportBase(context, conceptsMap),
       this.calculateTransportAssistance(context, conceptsMap),
     ]);
-    calculateMovements.addMovements(transportCalculations);
+    calculateMovements.addMovements(
+      transportCalculations.filter((m): m is Movement => m !== null),
+    );
+
     //save movements
     const mutableMovements = [...calculateMovements.movements];
     await this.movementService.saveMovements(mutableMovements);
@@ -290,6 +302,20 @@ export class PayrollService {
     this.logger.log(
       `Calculating provisions for employee ${context.employeeId}`,
     );
+    const crCodes = await getConceptCodes(
+      this.codesConfigService,
+      CONCEPT_IDS_REGIME,
+    );
+    const { contractData } = context;
+    const { regimeCode } = contractData;
+
+    if (
+      regimeCode === crCodes.aprenticeRegime ||
+      regimeCode === crCodes.integralRegime
+    ) {
+      // Pensioned regime (excluded)
+      return;
+    }
 
     const unemploymentProvisions =
       await this.unemploymentService.calculateUnemploymentProvision(
@@ -313,8 +339,38 @@ export class PayrollService {
     calculateMovements.addMovements(bonusPaymentProvisions);
 
     //save movements
-    const mutableMovements = [...calculateMovements.movements];
+    const mutableMovements = [...(calculateMovements.movements ?? [])]; // [...calculateMovements.movements];
     await this.movementService.saveMovements(mutableMovements);
+    calculateMovements.clearMovements();
+  }
+
+  private async calculateVacationsProvisions(
+    context: PayrollContext,
+    conceptsMap: Map<string, string>,
+    calculateMovements: PayrollCalculationContext,
+  ) {
+    this.logger.log(
+      `Calculating vacation provisions for employee ${context.employeeId}`,
+    );
+    const crCodes = await getConceptCodes(
+      this.codesConfigService,
+      CONCEPT_IDS_REGIME,
+    );
+    const { contractData } = context;
+    const { regimeCode } = contractData;
+
+    if (regimeCode === crCodes.aprenticeRegime) {
+      // aprentice regime (excluded)
+      return;
+    }
+
+    const vacationsProvisionsMovements =
+      await this.vacationsService.calculateVacationProvision(
+        context,
+        conceptsMap,
+      );
+
+    await this.movementService.saveMovements(vacationsProvisionsMovements);
     calculateMovements.clearMovements();
   }
 
@@ -605,14 +661,15 @@ export class PayrollService {
   private async calculateTransportBase(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement> {
+  ): Promise<Movement | null> {
     const { employeeId, period, companyId } = context;
     try {
       if (
         !context.contractData.transportAssistance ||
         !context.contractData.variableSalary
-      )
-        return;
+      ) {
+        return null;
+      }
 
       const transportBase = await this.movementService.getSumMovementsValues(
         employeeId,
@@ -647,10 +704,12 @@ export class PayrollService {
   private async calculateTransportAssistance(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement> {
+  ): Promise<Movement | null> {
     const { employeeId, period, salaryData, companyId } = context;
     const { salary: actualSalary } = salaryData;
-    if (!context.contractData.transportAssistance) return;
+    if (!context.contractData.transportAssistance) {
+      return null;
+    }
 
     try {
       const transportCodes = await getConceptCodes(
@@ -668,6 +727,7 @@ export class PayrollService {
       const MovementWorkedDays =
         await this.movementService.getMovementByConceptAndPeriodNumber(
           employeeId,
+          period.year,
           period.number,
           transportCodes.workedDaysPeriod,
         );

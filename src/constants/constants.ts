@@ -26,6 +26,23 @@ export const CONCEPT_IDS_UNEMPLOYMENT_INTEREST = {
   unemployedInterestPayed: '0158', //
 };
 
+export const CONCEPT_IDS_VACATION = {
+  integralRegime: '0063', //INTEGRAL_REGIME
+  aprenticeRegime: '0062', // APPRENTICE_REGIME
+  previusRegime: '0061', // APPRENTICE_REGIME
+  Ley50Regime: '0060', // APPRENTICE_REGIME
+
+  vacationWorkedDays: '0159', //VACATIONS WORKED DAYS
+  variableProvisionVacationBase: '0160',
+  staticProvisionVacationBase: '0161',
+  provisionVacationBase: '0162',
+  newBalanceProvisionVacation: '0163',
+  previousBalanceVacation: '0164',
+  vacationsProvicion: '0165',
+  vacationEnjoyed: '0166',
+  compensatedvacations: '0167',
+};
+
 export const CONCEPT_IDS_CONTRIBUTION_RISK = {
   integralRegime: '0063', //INTEGRAL_REGIME
   aprenticeRegime: '0062', // APPRENTICE_REGIME
@@ -160,7 +177,7 @@ export const CONCEPT_IDS_BONUS_PAYMENT = {
   totalProvision: '0151',
   paidBonusConcept: '0156',
   bonusDaysConstant: '0155',
-  bonusAlreryPay: '0156',
+  bonusAlrearyPaid: '0156',
 };
 
 export const CONCEPT_IDS_TRANSPORT = {
@@ -173,4 +190,11 @@ export const CONSTANTS_IDS_TRANSPORT = {
   ttle: '0082',
   autl: '0083',
   smlv: '0035',
+};
+
+export const CONCEPT_IDS_REGIME = {
+  integralRegime: '0063', //INTEGRAL_REGIME
+  aprenticeRegime: '0062', // APPRENTICE_REGIME
+  previusRegime: '0061', // APPRENTICE_REGIME
+  Ley50Regime: '0060', // APPRENTICE_REGIME
 };

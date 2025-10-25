@@ -39,7 +39,7 @@ export class PayrollProcessor implements OnModuleInit {
       const duration = end - start; // Duration in ms
 
       this.logger.log(
-        `calculation payroll for employee ${job.employeeId} finished in ${duration} mss`,
+        `calculation payroll for employee ${job.data.employeeId} finished in ${duration} mss`,
       );
       //await this.jobStatusService.setStatus(job.jobId, 'completed', result);
     } catch (err) {

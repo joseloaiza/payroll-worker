@@ -110,6 +110,84 @@ export class MovementRepository {
   }
 
   /**
+   * get the movements sum filter eihther by year or year and month, also
+   * is possible send a querystring to filter for any other field
+   * @param employeeId
+   * @param iniDate
+   * @param endDate
+   * @param queryString
+   * @returns
+   */
+  async getSumMovementsValuesBetweenDates(
+    employeeId: string,
+    iniDate: Date,
+    endDate: Date,
+    queryString: Record<string, any> = {},
+  ): Promise<number> {
+    const query = this.repo
+      .createQueryBuilder('movement')
+      .select('SUM(movement.value)', 'totalMovements')
+      .innerJoin('movement.concept', 'concept')
+      .innerJoin('movement.period', 'period')
+      .where('movement.employee_id = :employeeId', { employeeId });
+
+    // ✅ Instead of periodId, allow filtering by date range
+    if (iniDate && endDate) {
+      query
+        .andWhere('period.initialDate >= :iniDate', { iniDate })
+        .andWhere('period.endDate <= :endDate', { endDate });
+    }
+
+    // Dynamically add conditions from queryString
+    Object.entries(queryString).forEach(([key, value]) => {
+      query.andWhere(`concept.${key} = :${key}`, { [key]: value });
+    });
+
+    const result = await query.getRawOne();
+    // Ensure the returned value is a number
+    return Number(result?.totalMovements) || 0;
+  }
+
+  /**
+   * get the movements sum filter eihther by year or year and month, also
+   * is possible send a querystring to filter for any other field
+   * @param employeeId
+   * @param iniDate
+   * @param endDate
+   * @param queryString
+   * @returns
+   */
+  async getSumMovementsQuantitiesBetweenDates(
+    employeeId: string,
+    iniDate: Date,
+    endDate: Date,
+    queryString: Record<string, any> = {},
+  ): Promise<number> {
+    const query = this.repo
+      .createQueryBuilder('movement')
+      .select('SUM(movement.quantity)', 'totalQuantity')
+      .innerJoin('movement.concept', 'concept')
+      .innerJoin('movement.period', 'period')
+      .where('movement.employee_id = :employeeId', { employeeId });
+
+    // ✅ Instead of periodId, allow filtering by date range
+    if (iniDate && endDate) {
+      query
+        .andWhere('period.initialDate >= :iniDate', { iniDate })
+        .andWhere('period.endDate <= :endDate', { endDate });
+    }
+
+    // Dynamically add conditions from queryString
+    Object.entries(queryString).forEach(([key, value]) => {
+      query.andWhere(`concept.${key} = :${key}`, { [key]: value });
+    });
+
+    const result = await query.getRawOne();
+    // Ensure the returned value is a number
+    return Number(result?.totalQuantity) || 0;
+  }
+
+  /**
    * method to get an employee movement by concept
    * @param employeeId
    * @param year
@@ -158,15 +236,16 @@ export class MovementRepository {
   }
 
   /**
-   * method to get an employee movement by concept
+   * method to get an employee movement
    * @param employeeId
    * @param year
-   * @param month
+   * @param periodNumber
    * @param code concept code
    * @returns
    */
   async getMovementByConceptAndPeriodNumber(
     employeeId: string,
+    year: number,
     periodNumber: number,
     code: string,
   ): Promise<Movement | null> {
@@ -185,6 +264,7 @@ export class MovementRepository {
         { code },
       )
       .where('movement.employee_id = :employeeId', { employeeId })
+      .andWhere('movement.year = :year', { year })
       .select(['movement.id', 'movement.quantity', 'movement.value']) // Selecting specific fields
       .getOne();
   }

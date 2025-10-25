@@ -74,4 +74,7 @@ export class EmployeeFullView {
 
   @ViewColumn()
   endContractDate: Date;
+
+  @ViewColumn()
+  vacationHistory: number;
 }

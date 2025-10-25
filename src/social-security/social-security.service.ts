@@ -390,7 +390,7 @@ export class SocialSecurityService {
   async calculateSolidarityContribution(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<Movement[] | null> {
     const {
       employeeId,
       companyId,
@@ -424,7 +424,7 @@ export class SocialSecurityService {
         solidarityCodes.APREN,
         solidarityCodes.PENSI,
       ]);
-      if (excludedCodes.has(regimeCode)) return;
+      if (excludedCodes.has(regimeCode)) return null;
 
       // Calculate general solidarity contribution
       const solidarityContribution = ibcSocialSecurity * (percentage / 100);
@@ -462,7 +462,7 @@ export class SocialSecurityService {
   async calculateParafiscalContribution(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<Movement[] | null> {
     this.logger.log(
       `Calculating parafiscal contribution for employee ${context.employeeId}`,
     );
@@ -510,7 +510,7 @@ export class SocialSecurityService {
       const baseParafiscal =
         totalBaseParafiscal * socialSecurityRate - baseParafilscalPrevious;
 
-      if (baseParafiscal <= 0) return;
+      if (baseParafiscal <= 0) return null;
 
       if (baseParafiscal > 0) {
         caja = baseParafiscal * (cajaRate / 100);
@@ -563,7 +563,7 @@ export class SocialSecurityService {
   async calculateSocialSecurityContributionRisk(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<Movement[] | null> {
     this.logger.log(
       `Calculating social security contribution risk for employee ${context.employeeId}`,
     );
@@ -576,7 +576,7 @@ export class SocialSecurityService {
       );
       if (regimeCode === crCodes.aprenticeRegime) {
         // Pensioned regime (excluded)
-        return;
+        return null;
       }
 
       // 2. Get all constant values in one call
