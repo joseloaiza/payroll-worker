@@ -19,34 +19,57 @@ export class PayrollProcessor implements OnModuleInit {
     private readonly client: MessagingClient,
   ) {}
   async onModuleInit() {
-    await this.client.subscribe('payroll_queue', async (job) => {
-      await this.handlePayrollCalculation(job);
-    });
+    console.log(process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE);
+    await this.client.subscribe(
+      process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE!,
+      async (job) => {
+        const { pattern, data } = job;
+        if (pattern === 'calculate_payroll') {
+          await this.handlePayrollCalculation(data);
+        }
+        //await this.handlePayrollCalculation(job);
+      },
+    );
   }
 
   //@EventPattern('calculate_payroll')
-  async handlePayrollCalculation(job: any) {
+  async handlePayrollCalculation(data: any) {
     //await this.jobStatusService.setStatus(job.jobId, 'processing');
-
+    const { jobId, employeeId, companyId, period } = data;
     const start = Date.now(); // Start time in ms
     try {
-      await this.payrollService.calculate(
-        job.data.employeeId,
-        job.data.companyId,
-        job.data.period,
-      );
+      await this.payrollService.calculate(employeeId, companyId, period);
       const end = Date.now(); // End time
       const duration = end - start; // Duration in ms
 
       this.logger.log(
-        `calculation payroll for employee ${job.data.employeeId} finished in ${duration} mss`,
+        `calculation payroll for employee ${employeeId} finished in ${duration} mss.`,
       );
+
+      // Notify progress
+      await this.client.emit(
+        'payroll_status_updates',
+        {
+          jobId,
+          employeeId: data.employeeId,
+          status: 'completed',
+        },
+        process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
+      );
+
       //await this.jobStatusService.setStatus(job.jobId, 'completed', result);
     } catch (err) {
+      await this.client.emit(
+        'payroll_status_updates',
+        {
+          jobId,
+          employeeId: data.employeeId,
+          status: 'failed',
+          error: err.message,
+        },
+        process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
+      );
       throw err;
-      //   await this.jobStatusService.setStatus(job.jobId, 'failed', {
-      //     error: err.message,
-      //   });
     }
   }
 }
