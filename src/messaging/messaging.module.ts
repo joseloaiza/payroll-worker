@@ -6,11 +6,7 @@ import { createMessagingClient } from './messaging.factory';
   providers: [
     {
       provide: 'MESSAGING_CLIENT',
-      useFactory: async () => {
-        const client = createMessagingClient();
-        await client.connect();
-        return client;
-      },
+      useFactory: () => createMessagingClient(),
     },
   ],
   exports: ['MESSAGING_CLIENT'],
