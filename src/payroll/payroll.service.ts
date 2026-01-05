@@ -11,10 +11,11 @@ import { UnemploymentService } from './../provisions/unemployment/unemployment.s
 import { BonusPaymentService } from './../provisions/bonus-payment/bonus-payment.service';
 import { SocialSecurityService } from './../social-security/social-security.service';
 import { VacationsService } from './../provisions/vacations/vacations.service';
-import { Period } from './entities/period.entity';
+//import { Period } from './entities/period.entity';
 import { Movement } from './../movements/entities/movement.entity';
 import {
   diseaseMappings,
+  IPeriod,
   licenseMappings,
   PayrollContext,
 } from './interfaces/payroll.interfaces';
@@ -55,9 +56,9 @@ export class PayrollService {
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
-  async calculate(employeeId: string, companyId: string, rawPeriod: Period) {
+  async calculate(employeeId: string, companyId: string, rawPeriod: any) {
     try {
-      const period: Period = {
+      const period: IPeriod = {
         ...rawPeriod,
         year: rawPeriod.year !== null ? Number(rawPeriod.year) : null,
         month: rawPeriod.month !== null ? Number(rawPeriod.month) : null,
@@ -116,7 +117,7 @@ export class PayrollService {
       );
       // ❌ Stop process and propagate error
       throw new Error(
-        `Payroll calculation failed for employee ${employeeId}: ${error.message}`,
+        `Payroll calculation failed for employee ${employeeId}: ${error.message}.`,
       );
     }
   }
@@ -125,7 +126,7 @@ export class PayrollService {
   private async buildPayrollContext(
     employeeId: string,
     companyId: string,
-    period: Period,
+    period: any,
   ): Promise<PayrollContext> {
     const employee = await this.employeeService.getEmployee(employeeId);
 

@@ -1,5 +1,12 @@
 import { AbstractEntity } from './../../database/abstract.entity';
-import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
+import { Company } from './../../company/entities/company.entity';
 
 @Entity('employee')
 export class Employee extends AbstractEntity {
@@ -8,6 +15,10 @@ export class Employee extends AbstractEntity {
 
   @Column()
   company_id: string;
+
+  @ManyToOne(() => Company)
+  @JoinColumn({ name: 'company_id' })
+  company: Company;
 
   @Column()
   identificationType_id: string;
