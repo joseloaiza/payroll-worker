@@ -36,6 +36,8 @@ export class PayrollProcessor implements OnModuleInit {
   async handlePayrollCalculation(data: any) {
     //await this.jobStatusService.setStatus(job.jobId, 'processing');
     const { jobId, employeeId, companyId, period } = data;
+    console.log(`este es el empleado${employeeId}`);
+
     const start = Date.now(); // Start time in ms
     try {
       await this.payrollService.calculate(employeeId, companyId, period);

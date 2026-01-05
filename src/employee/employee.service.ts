@@ -9,4 +9,9 @@ export class EmployeeService {
   async getEmployee(employeeId: string): Promise<EmployeeFullView> {
     return await this.repo.getEmployee(employeeId);
   }
+
+  async getEmployeesCompany(company_id: string): Promise<EmployeeFullView[]> {
+    const employees = await this.repo.getEmployeesCompany(company_id);
+    return employees;
+  }
 }

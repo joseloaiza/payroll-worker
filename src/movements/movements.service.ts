@@ -2,8 +2,8 @@ import { Inject, Injectable, LoggerService } from '@nestjs/common';
 import { MovementRepository } from './movements.repository';
 import { CreateMovementDto } from './dtos/movement.dto';
 import { Movement } from './entities/movement.entity';
-import { Period } from 'src/payroll/entities/period.entity';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { IPeriod } from 'src/payroll/interfaces/payroll.interfaces';
 
 @Injectable()
 export class MovementsService {
@@ -24,7 +24,7 @@ export class MovementsService {
     movementData: any[],
     employeeId: string,
     companyId: string,
-    period: Period,
+    period: IPeriod,
     conceptsMap: Map<string, string>,
   ): Promise<{ successes: Movement[]; failures: string[] }> {
     const failures: string[] = [];

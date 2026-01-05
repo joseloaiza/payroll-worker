@@ -45,9 +45,9 @@ export class Period extends AbstractEntity {
   @Column({ nullable: true, type: 'int' })
   month?: number;
 
-  @Column({ nullable: true, type: 'int' })
-  previousPeriodYear: number;
+  // @Column({ nullable: true, type: 'int' })
+  // previousPeriodYear: number;
 
-  @Column({ nullable: true, type: 'int' })
-  previousPeriodNumber: number;
+  // @Column({ nullable: true, type: 'int' })
+  // previousPeriodNumber: number;
 }

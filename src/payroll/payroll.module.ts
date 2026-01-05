@@ -18,10 +18,28 @@ import { Concept } from './entities/concept.entity';
 import { CompanyModule } from 'src/company/company.module';
 import { AbsenteeHistory } from 'src/novelties/entities/absenteeHistory.entity';
 import { VacationsService } from 'src/provisions/vacations/vacations.service';
+import { PayrollSchedulerService } from './scheduler/payroll-scheduler/payroll-scheduler.service';
+import { PeriodService } from './period/period.service';
+import { CompanyService } from 'src/company/company.service';
+import { Company } from 'src/company/entities/company.entity';
+import { CompanyRepository } from 'src/company/company.repository';
+import { PayrollJobRepository } from './jobs/payroll-job.repository';
+import { PeriodStatusService } from './period-status/period-status.service';
+import { PeriodRepository } from './period/period.repository';
+import { PeriodStatusRepository } from './period-status/period-status.repository';
+import { PayrollStatusListener } from './jobs/payroll-status-listener.service';
+import { PayrollJob } from './entities/payroll-jobs.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Period, PeriodStatus, Concept, AbsenteeHistory]),
+    TypeOrmModule.forFeature([
+      Period,
+      PeriodStatus,
+      Concept,
+      AbsenteeHistory,
+      Company,
+      PayrollJob,
+    ]),
     EmployeeModule,
     MovementsModule,
     CodesConfigModule,
@@ -31,14 +49,22 @@ import { VacationsService } from 'src/provisions/vacations/vacations.service';
   ],
   controllers: [PayrollProcessor],
   providers: [
+    CompanyService,
     PayrollService,
     ConceptsService,
-
     UnemploymentService,
     BonusPaymentService,
+    VacationsService,
+    PayrollSchedulerService,
+    PeriodService,
+    PeriodStatusService,
+    PayrollStatusListener,
+    PeriodRepository,
+    PeriodStatusRepository,
     AbsenteeHistoryRepository,
     ConceptRepository,
-    VacationsService,
+    CompanyRepository,
+    PayrollJobRepository,
   ],
 })
 export class PayrollModule {}
