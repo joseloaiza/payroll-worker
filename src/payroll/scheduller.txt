@@ -1,0 +1,786 @@
+// =====================================
+// 1. Install required dependencies
+// =====================================
+// npm install @nestjs/schedule
+// npm install @nestjs/typeorm typeorm
+
+// =====================================
+// 2. entities/company.entity.ts
+// =====================================
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
+import { Employee } from './employee.entity';
+import { PayrollPeriod } from './payroll-period.entity';
+
+@Entity('companies')
+export class Company {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  name: string;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @OneToMany(() => Employee, (employee) => employee.company)
+  employees: Employee[];
+
+  @OneToMany(() => PayrollPeriod, (period) => period.company)
+  payrollPeriods: PayrollPeriod[];
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  updatedAt: Date;
+}
+
+// =====================================
+// 3. entities/employee.entity.ts
+// =====================================
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Company } from './company.entity';
+
+@Entity('employees')
+export class Employee {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  firstName: string;
+
+  @Column()
+  lastName: string;
+
+  @Column()
+  email: string;
+
+  @Column('uuid')
+  companyId: string;
+
+  @ManyToOne(() => Company, (company) => company.employees)
+  @JoinColumn({ name: 'companyId' })
+  company: Company;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  updatedAt: Date;
+}
+
+// =====================================
+// 4. entities/payroll-period.entity.ts
+// =====================================
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Company } from './company.entity';
+
+export enum PayrollPeriodStatus {
+  ACTIVE = 'ACTIVE',           // Ready to be processed
+  PROCESSING = 'PROCESSING',   // Currently being processed
+  COMPLETED = 'COMPLETED',     // All employees processed
+  CLOSED = 'CLOSED',           // Period closed, no more processing
+}
+
+@Entity('payroll_periods')
+@Index(['companyId', 'status'])
+@Index(['status', 'startDate', 'endDate'])
+export class PayrollPeriod {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column('uuid')
+  companyId: string;
+
+  @ManyToOne(() => Company, (company) => company.payrollPeriods)
+  @JoinColumn({ name: 'companyId' })
+  company: Company;
+
+  @Column()
+  periodName: string; // e.g., "2025-01", "Q1-2025", "Week 47"
+
+  @Column({ type: 'date' })
+  startDate: Date;
+
+  @Column({ type: 'date' })
+  endDate: Date;
+
+  @Column({
+    type: 'enum',
+    enum: PayrollPeriodStatus,
+    default: PayrollPeriodStatus.ACTIVE,
+  })
+  status: PayrollPeriodStatus;
+
+  @Column({ type: 'int', default: 0 })
+  totalEmployees: number;
+
+  @Column({ type: 'int', default: 0 })
+  processedEmployees: number;
+
+  @Column({ type: 'int', default: 0 })
+  failedEmployees: number;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastProcessedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  completedAt: Date;
+
+  @Column({ type: 'jsonb', nullable: true })
+  metadata: Record<string, any>;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  updatedAt: Date;
+}
+
+// =====================================
+// 5. entities/payroll-execution-log.entity.ts
+// =====================================
+import { Entity, Column, PrimaryGeneratedColumn, Index } from 'typeorm';
+
+@Entity('payroll_execution_logs')
+@Index(['executionDate', 'status'])
+export class PayrollExecutionLog {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'timestamp' })
+  executionDate: Date;
+
+  @Column({ type: 'int', default: 0 })
+  companiesProcessed: number;
+
+  @Column({ type: 'int', default: 0 })
+  periodsProcessed: number;
+
+  @Column({ type: 'int', default: 0 })
+  employeesQueued: number;
+
+  @Column({ default: 'SUCCESS' })
+  status: string; // SUCCESS, PARTIAL, FAILED
+
+  @Column({ type: 'int' })
+  durationMs: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  summary: Record<string, any>;
+
+  @Column({ type: 'text', nullable: true })
+  errorMessage: string;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+}
+
+// =====================================
+// 6. scheduler/payroll-scheduler.service.ts
+// =====================================
+import { Injectable, Inject, LoggerService } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { MessagingClient } from 'src/messaging/messaging.interface';
+import { Company } from '../entities/company.entity';
+import { Employee } from '../entities/employee.entity';
+import { PayrollPeriod, PayrollPeriodStatus } from '../entities/payroll-period.entity';
+import { PayrollExecutionLog } from '../entities/payroll-execution-log.entity';
+import { v4 as uuidv4 } from 'uuid';
+
+@Injectable()
+export class PayrollSchedulerService {
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+    @Inject('MESSAGING_CLIENT')
+    private readonly client: MessagingClient,
+    @InjectRepository(Company)
+    private companyRepo: Repository<Company>,
+    @InjectRepository(Employee)
+    private employeeRepo: Repository<Employee>,
+    @InjectRepository(PayrollPeriod)
+    private periodRepo: Repository<PayrollPeriod>,
+    @InjectRepository(PayrollExecutionLog)
+    private executionLogRepo: Repository<PayrollExecutionLog>,
+  ) {}
+
+  /**
+   * Main scheduler - runs at configured time
+   * Default: Every day at 1 AM
+   * Change the cron expression to your needs:
+   * - '0 0 1 * * *' = 1 AM daily
+   * - '0 0 0 * * *' = 12 AM (midnight) daily
+   * - '0 0 2 * * *' = 2 AM daily
+   * - '0 30 0 * * *' = 12:30 AM daily
+   */
+  @Cron(process.env.PAYROLL_SCHEDULE_CRON || '0 0 1 * * *', {
+    name: 'payroll-processor',
+    timeZone: process.env.TZ || 'America/New_York',
+  })
+  async processScheduledPayrolls() {
+    const executionStart = Date.now();
+    this.logger.log('======================================');
+    this.logger.log('Starting scheduled payroll processing');
+    this.logger.log('======================================');
+
+    const executionLog = this.executionLogRepo.create({
+      executionDate: new Date(),
+      status: 'RUNNING',
+    });
+
+    try {
+      // 1. Find all active companies
+      const companies = await this.companyRepo.find({
+        where: { isActive: true },
+      });
+
+      this.logger.log(`Found ${companies.length} active companies`);
+
+      let totalPeriodsProcessed = 0;
+      let totalEmployeesQueued = 0;
+      const companySummary = [];
+
+      // 2. For each company, find active payroll periods
+      for (const company of companies) {
+        try {
+          const result = await this.processCompanyPayroll(company);
+          totalPeriodsProcessed += result.periodsProcessed;
+          totalEmployeesQueued += result.employeesQueued;
+          companySummary.push({
+            companyId: company.id,
+            companyName: company.name,
+            ...result,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Error processing company ${company.name} (${company.id})`,
+            error.stack,
+          );
+          companySummary.push({
+            companyId: company.id,
+            companyName: company.name,
+            error: error.message,
+          });
+        }
+      }
+
+      const executionEnd = Date.now();
+      const duration = executionEnd - executionStart;
+
+      // Save execution log
+      executionLog.companiesProcessed = companies.length;
+      executionLog.periodsProcessed = totalPeriodsProcessed;
+      executionLog.employeesQueued = totalEmployeesQueued;
+      executionLog.status = 'SUCCESS';
+      executionLog.durationMs = duration;
+      executionLog.summary = { companies: companySummary };
+
+      await this.executionLogRepo.save(executionLog);
+
+      this.logger.log('======================================');
+      this.logger.log('Payroll processing completed');
+      this.logger.log(`Companies processed: ${companies.length}`);
+      this.logger.log(`Periods processed: ${totalPeriodsProcessed}`);
+      this.logger.log(`Employees queued: ${totalEmployeesQueued}`);
+      this.logger.log(`Duration: ${duration}ms`);
+      this.logger.log('======================================');
+
+    } catch (error) {
+      const executionEnd = Date.now();
+      const duration = executionEnd - executionStart;
+
+      this.logger.error('Fatal error in payroll processing', error.stack);
+
+      executionLog.status = 'FAILED';
+      executionLog.durationMs = duration;
+      executionLog.errorMessage = error.message;
+      
+      await this.executionLogRepo.save(executionLog);
+    }
+  }
+
+  /**
+   * Process all active payroll periods for a company
+   */
+  private async processCompanyPayroll(company: Company) {
+    this.logger.log(`Processing payroll for company: ${company.name} (${company.id})`);
+
+    // Find all active periods for this company
+    const activePeriods = await this.periodRepo.find({
+      where: {
+        companyId: company.id,
+        status: PayrollPeriodStatus.ACTIVE,
+      },
+      order: {
+        startDate: 'ASC',
+      },
+    });
+
+    if (activePeriods.length === 0) {
+      this.logger.log(`No active periods for company ${company.name}`);
+      return {
+        periodsProcessed: 0,
+        employeesQueued: 0,
+      };
+    }
+
+    this.logger.log(
+      `Found ${activePeriods.length} active period(s) for company ${company.name}`,
+    );
+
+    let totalEmployeesQueued = 0;
+
+    // Process each active period
+    for (const period of activePeriods) {
+      const employeesQueued = await this.processPeriod(company, period);
+      totalEmployeesQueued += employeesQueued;
+    }
+
+    return {
+      periodsProcessed: activePeriods.length,
+      employeesQueued: totalEmployeesQueued,
+    };
+  }
+
+  /**
+   * Process a specific payroll period
+   */
+  private async processPeriod(
+    company: Company,
+    period: PayrollPeriod,
+  ): Promise<number> {
+    this.logger.log(
+      `Processing period ${period.periodName} (${period.id}) for company ${company.name}`,
+    );
+
+    // Get all active employees for this company
+    const employees = await this.employeeRepo.find({
+      where: {
+        companyId: company.id,
+        isActive: true,
+      },
+    });
+
+    if (employees.length === 0) {
+      this.logger.log(
+        `No active employees for company ${company.name}, period ${period.periodName}`,
+      );
+      
+      // Update period status
+      period.status = PayrollPeriodStatus.COMPLETED;
+      period.totalEmployees = 0;
+      period.completedAt = new Date();
+      await this.periodRepo.save(period);
+      
+      return 0;
+    }
+
+    // Update period to PROCESSING
+    period.status = PayrollPeriodStatus.PROCESSING;
+    period.totalEmployees = employees.length;
+    period.lastProcessedAt = new Date();
+    await this.periodRepo.save(period);
+
+    // Generate batch ID for tracking
+    const batchId = uuidv4();
+
+    // Queue all employees for processing
+    for (const employee of employees) {
+      const jobId = uuidv4();
+
+      await this.client.emit(
+        'calculate_payroll',
+        {
+          jobId,
+          batchId,
+          periodId: period.id,
+          employeeId: employee.id,
+          companyId: company.id,
+          period: period.periodName,
+          startDate: period.startDate,
+          endDate: period.endDate,
+        },
+        process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE,
+      );
+    }
+
+    this.logger.log(
+      `Queued ${employees.length} employees for period ${period.periodName}, ` +
+      `company ${company.name}, batchId: ${batchId}`,
+    );
+
+    return employees.length;
+  }
+
+  /**
+   * Manual trigger for specific company and period
+   */
+  async triggerManualPayroll(companyId: string, periodId: string) {
+    this.logger.log(`Manual trigger: companyId=${companyId}, periodId=${periodId}`);
+
+    const company = await this.companyRepo.findOne({
+      where: { id: companyId },
+    });
+
+    if (!company) {
+      throw new Error(`Company ${companyId} not found`);
+    }
+
+    const period = await this.periodRepo.findOne({
+      where: { id: periodId, companyId },
+    });
+
+    if (!period) {
+      throw new Error(`Period ${periodId} not found for company ${companyId}`);
+    }
+
+    const employeesQueued = await this.processPeriod(company, period);
+
+    return {
+      success: true,
+      companyId,
+      companyName: company.name,
+      periodId,
+      periodName: period.periodName,
+      employeesQueued,
+    };
+  }
+
+  /**
+   * Manual trigger for all active periods (run scheduler now)
+   */
+  async triggerManualProcessing() {
+    this.logger.log('Manual trigger: processing all active periods NOW');
+    await this.processScheduledPayrolls();
+    return { success: true, message: 'Payroll processing triggered' };
+  }
+
+  /**
+   * Get execution history
+   */
+  async getExecutionHistory(limit: number = 10) {
+    return await this.executionLogRepo.find({
+      order: { executionDate: 'DESC' },
+      take: limit,
+    });
+  }
+
+  /**
+   * Cleanup old execution logs (optional, runs monthly)
+   */
+  @Cron('0 0 3 1 * *') // 3 AM on 1st of every month
+  async cleanupOldLogs() {
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    const result = await this.executionLogRepo
+      .createQueryBuilder()
+      .delete()
+      .where('executionDate < :date', { date: threeMonthsAgo })
+      .execute();
+
+    this.logger.log(`Cleaned up ${result.affected} old execution logs`);
+  }
+}
+
+// =====================================
+// 7. Updated payroll.processor.ts
+// =====================================
+import {
+  Controller,
+  Inject,
+  LoggerService,
+  OnModuleInit,
+} from '@nestjs/common';
+import { PayrollService } from './payroll.service';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { MessagingClient } from 'src/messaging/messaging.interface';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { PayrollPeriod, PayrollPeriodStatus } from '../entities/payroll-period.entity';
+
+@Controller()
+export class PayrollProcessor implements OnModuleInit {
+  constructor(
+    private readonly payrollService: PayrollService,
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: LoggerService,
+    @Inject('MESSAGING_CLIENT')
+    private readonly client: MessagingClient,
+    @InjectRepository(PayrollPeriod)
+    private periodRepo: Repository<PayrollPeriod>,
+  ) {}
+
+  async onModuleInit() {
+    this.logger.log(`Subscribing to queue: ${process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE}`);
+    
+    await this.client.subscribe(
+      process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE!,
+      async (job) => {
+        const { pattern, data } = job;
+        if (pattern === 'calculate_payroll') {
+          await this.handlePayrollCalculation(data);
+        }
+      },
+    );
+  }
+
+  async handlePayrollCalculation(data: any) {
+    const {
+      jobId,
+      batchId,
+      periodId,
+      employeeId,
+      companyId,
+      period,
+      startDate,
+      endDate,
+    } = data;
+    
+    const start = Date.now();
+    
+    try {
+      this.logger.log(
+        `Starting payroll: employee=${employeeId}, company=${companyId}, ` +
+        `period=${period}, jobId=${jobId}`,
+      );
+
+      // Execute payroll calculation
+      await this.payrollService.calculate(
+        employeeId,
+        companyId,
+        period,
+        startDate,
+        endDate,
+      );
+      
+      const end = Date.now();
+      const duration = end - start;
+
+      this.logger.log(
+        `Payroll completed: employee=${employeeId}, duration=${duration}ms`,
+      );
+
+      // Update period progress
+      if (periodId) {
+        await this.updatePeriodProgress(periodId, true);
+      }
+
+      // Send success status
+      await this.client.emit(
+        'payroll_status_updates',
+        {
+          jobId,
+          batchId,
+          periodId,
+          employeeId,
+          companyId,
+          period,
+          status: 'completed',
+          duration,
+        },
+        process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
+      );
+
+    } catch (err) {
+      this.logger.error(
+        `Payroll failed: employee=${employeeId}, error=${err.message}`,
+        err.stack,
+      );
+
+      // Update period with failure
+      if (periodId) {
+        await this.updatePeriodProgress(periodId, false);
+      }
+
+      // Send failure status
+      await this.client.emit(
+        'payroll_status_updates',
+        {
+          jobId,
+          batchId,
+          periodId,
+          employeeId,
+          companyId,
+          period,
+          status: 'failed',
+          error: err.message,
+        },
+        process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
+      );
+      
+      throw err;
+    }
+  }
+
+  private async updatePeriodProgress(periodId: string, success: boolean) {
+    try {
+      const period = await this.periodRepo.findOne({
+        where: { id: periodId },
+      });
+
+      if (!period) {
+        this.logger.warn(`Period ${periodId} not found`);
+        return;
+      }
+
+      // Update counters
+      if (success) {
+        period.processedEmployees += 1;
+      } else {
+        period.failedEmployees += 1;
+      }
+
+      // Check if all employees processed
+      const totalProcessed = period.processedEmployees + period.failedEmployees;
+      
+      if (totalProcessed >= period.totalEmployees) {
+        period.status = PayrollPeriodStatus.COMPLETED;
+        period.completedAt = new Date();
+        
+        this.logger.log(
+          `Period ${period.periodName} (${periodId}) completed. ` +
+          `Success: ${period.processedEmployees}, Failed: ${period.failedEmployees}`,
+        );
+      }
+
+      await this.periodRepo.save(period);
+      
+    } catch (error) {
+      this.logger.error(
+        `Error updating period progress: ${periodId}`,
+        error.stack,
+      );
+    }
+  }
+}
+
+// =====================================
+// 8. scheduler/payroll-scheduler.module.ts
+// =====================================
+import { Module } from '@nestjs/module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { PayrollSchedulerService } from './payroll-scheduler.service';
+import { Company } from '../entities/company.entity';
+import { Employee } from '../entities/employee.entity';
+import { PayrollPeriod } from '../entities/payroll-period.entity';
+import { PayrollExecutionLog } from '../entities/payroll-execution-log.entity';
+
+@Module({
+  imports: [
+    ScheduleModule.forRoot(),
+    TypeOrmModule.forFeature([
+      Company,
+      Employee,
+      PayrollPeriod,
+      PayrollExecutionLog,
+    ]),
+  ],
+  providers: [PayrollSchedulerService],
+  exports: [PayrollSchedulerService],
+})
+export class PayrollSchedulerModule {}
+
+// =====================================
+// 9. Optional: API Controller
+// =====================================
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { PayrollSchedulerService } from './scheduler/payroll-scheduler.service';
+
+@Controller('payroll-scheduler')
+export class PayrollSchedulerController {
+  constructor(
+    private readonly schedulerService: PayrollSchedulerService,
+  ) {}
+
+  // Trigger processing for all active periods NOW
+  @Post('trigger')
+  // @UseGuards(AuthGuard) // Add authentication
+  async triggerNow() {
+    return await this.schedulerService.triggerManualProcessing();
+  }
+
+  // Trigger specific company and period
+  @Post('trigger/:companyId/:periodId')
+  // @UseGuards(AuthGuard)
+  async triggerSpecific(
+    @Param('companyId') companyId: string,
+    @Param('periodId') periodId: string,
+  ) {
+    return await this.schedulerService.triggerManualPayroll(companyId, periodId);
+  }
+
+  // Get execution history
+  @Get('history')
+  async getHistory(@Query('limit') limit?: number) {
+    return await this.schedulerService.getExecutionHistory(limit ? +limit : 10);
+  }
+}
+
+// =====================================
+// 10. Environment variables (.env)
+// =====================================
+/*
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=yourpassword
+DB_DATABASE=payroll_db
+
+# Service Bus / RabbitMQ
+SERVICEBUS_CONNECTION_STRING=your_connection_string
+SERVICEBUS_PAYROLL_JOBS_QUEUE=payroll-jobs
+SERVICEBUS_PAYROLL_STATUS_QUEUE=payroll-status
+
+# Scheduler Configuration
+# Cron format: second minute hour dayOfMonth month dayOfWeek
+# Examples:
+# - '0 0 0 * * *' = Midnight (12 AM) every day
+# - '0 0 1 * * *' = 1 AM every day
+# - '0 0 2 * * *' = 2 AM every day
+# - '0 30 0 * * *' = 12:30 AM every day
+PAYROLL_SCHEDULE_CRON=0 0 1 * * *
+
+# Timezone (important for cron jobs)
+TZ=America/New_York
+*/
+
+// =====================================
+// 11. Example: Creating Active Periods
+// =====================================
+/*
+-- SQL to create active payroll periods
+
+INSERT INTO payroll_periods (
+  id,
+  company_id,
+  period_name,
+  start_date,
+  end_date,
+  status
+) VALUES
+  (gen_random_uuid(), 'company-uuid-1', '2025-01', '2025-01-01', '2025-01-31', 'ACTIVE'),
+  (gen_random_uuid(), 'company-uuid-2', '2025-01', '2025-01-01', '2025-01-31', 'ACTIVE');
+
+-- After processing, you can close periods:
+UPDATE payroll_periods 
+SET status = 'CLOSED' 
+WHERE period_name = '2025-01' AND status = 'COMPLETED';
+*/

@@ -6,6 +6,23 @@ export class RabbitMQClient implements MessagingClient {
   private channel: amqp.Channel;
 
   constructor() {}
+  send<T = any, R = any>(
+    pattern: string,
+    data: T,
+    queueName: string,
+  ): Promise<R> {
+    throw new Error('Method not implemented.');
+  }
+  emitBatch<T = any>(
+    pattern: string,
+    data: T[],
+    queueName: string,
+  ): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
+  emit<T = any>(pattern: string, data: T): Promise<void> {
+    throw new Error('Method not implemented');
+  }
   async connect(): Promise<void> {
     this.connection = await amqp.connect(
       process.env.RABBITMQ_URL || 'amqp://localhost',

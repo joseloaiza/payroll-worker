@@ -1,5 +1,4 @@
 import { Movement } from '../../movements/entities/movement.entity';
-import { Period } from './../entities/period.entity';
 
 export interface PayrollCalculationResult {
   salary: number;
@@ -8,11 +7,26 @@ export interface PayrollCalculationResult {
   contributions: number;
 }
 
+export interface IPeriod {
+  id: string;
+  year: number;
+  number: number;
+  initialDate: Date;
+  endDate: Date;
+  company_id: string;
+  periodStatus_id: string;
+  description?: string;
+  isActive: boolean;
+  month?: number;
+  previousPeriodYear: number;
+  previousPeriodNumber: number;
+}
+
 // src/payroll/interfaces/payroll-context.interface.ts
 export interface PayrollContext {
   employeeId: string;
   companyId: string;
-  period: Period;
+  period: IPeriod;
   realEndDatePeriod: Date;
   totalWorkindays: number;
   totalAbseenteDays: number;

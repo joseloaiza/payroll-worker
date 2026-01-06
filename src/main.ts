@@ -8,6 +8,7 @@ async function bootstrap() {
   try {
     const logger = new Logger('MyApp');
     logger.log('starting creating service');
+    console.log(process.env.SERVICEBUS_QUEUE);
     const app = await NestFactory.createMicroservice(AppModule);
 
     app.enableShutdownHooks();

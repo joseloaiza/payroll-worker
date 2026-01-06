@@ -19,6 +19,7 @@ import { MessagingModule } from './messaging/messaging.module';
 import { CACHE_MANAGER, CacheModule } from '@nestjs/cache-manager';
 //import { redisStore } from 'cache-manager-redis-store';
 import { Cache } from 'cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { Cache } from 'cache-manager';
     CacheModule.register({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     //RedisModule,
     DatabaseModule,
     PayrollModule,

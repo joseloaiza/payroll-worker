@@ -1,6 +1,5 @@
 import { Movement } from '../../movements/entities/movement.entity';
-import { Period } from './../entities/period.entity';
-
+import { IPeriod } from './../interfaces/payroll.interfaces';
 // src/payroll/context/payroll-context.ts
 export class PayrollCalculationContext {
   private _movementBuffer: Movement[] = [];
@@ -8,7 +7,7 @@ export class PayrollCalculationContext {
   constructor(
     public readonly employeeId: string,
     public readonly companyId: string,
-    public readonly period: Period,
+    public readonly period: IPeriod,
   ) {}
 
   get movements(): Readonly<Movement[]> {
