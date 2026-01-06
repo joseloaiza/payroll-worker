@@ -42,8 +42,9 @@ export class PeriodRepository extends BaseRepository<
   }
 
   async getLastPeriod(year: number, periodNumber: number): Promise<Period> {
-    if (periodNumber === 1) {
+    if (periodNumber == 1) {
       // Case 1: last period of previous year
+
       return await this.repo
         .createQueryBuilder('p')
         .where('p.year = :prevYear', { prevYear: year - 1 })
