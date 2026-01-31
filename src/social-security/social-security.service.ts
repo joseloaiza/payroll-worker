@@ -311,7 +311,7 @@ export class SocialSecurityService {
         `Error calculating excess health contribution for  employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate health contribution: ${error.message}`,
+        `No se pudo calcular la contribución a la salud: ${error.message}`,
       );
     }
   }
@@ -382,7 +382,7 @@ export class SocialSecurityService {
         `Error calculating excess pension contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate pension contribution: ${error.message}`,
+        `No se pudo calcular la contribución a la pensión: ${error.message}`,
       );
     }
   }
@@ -555,7 +555,7 @@ export class SocialSecurityService {
         `Error calculating excess parafiscal contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate parafiscal contribution: ${error.message}`,
+        `No se pudo calcular la contribución parafiscal: ${error.message}`,
       );
     }
   }
@@ -650,13 +650,13 @@ export class SocialSecurityService {
         );
         return successes;
       }
-      return;
+      return null;
     } catch (error) {
       this.logger.error(
         `Error calculating ss risk contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate ss rs risk contribution: ${error.message}`,
+        `No se pudo calcular la contribución de riesgo seguridad social: ${error.message}`,
       );
     }
   }

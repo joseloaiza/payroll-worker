@@ -24,7 +24,7 @@ export class BonusPaymentService {
     conceptMap: Map<string, string>,
   ) {
     const { employeeId, companyId, period, contractData, salaryData } = context;
-    const { initialContractDate } = contractData;
+    const { initialContract } = contractData;
     const { salary } = salaryData;
     try {
       const bonusPaymentCodes = await getConceptCodes(
@@ -51,7 +51,7 @@ export class BonusPaymentService {
           period.month,
           period.year,
           period.endDate,
-          initialContractDate,
+          initialContract.initialContractDate,
         ),
         // Step 2: Calculate base variable concepts (e.g., legal bonus base)
         this.movementsService.getSumMovementsValues(
@@ -148,7 +148,9 @@ export class BonusPaymentService {
 
           if (!conceptId) {
             this.logger.error(`Concept ID not found for code: ${code}`);
-            throw new Error(`Concept ID not found for code: ${code}`);
+            throw new Error(
+              `No se encontro el id del concepto con el codigo: ${code}`,
+            );
           }
 
           return this.movementsService.create({
@@ -168,7 +170,7 @@ export class BonusPaymentService {
         `Error calculating bonus payment provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate bonus payment provision: ${error.message}`,
+        `No se pudo calcular la provisión para la prima: ${error.message}`,
       );
     }
   }

@@ -36,6 +36,7 @@ export class PeriodRepository extends BaseRepository<
       });
 
       return period;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       throw new InternalServerErrorException('Error fetching Period');
     }

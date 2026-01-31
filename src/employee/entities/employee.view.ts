@@ -66,14 +66,14 @@ export class EmployeeFullView {
   @ViewColumn()
   salaryTypeCode: string;
 
-  @ViewColumn()
-  contractType_id: string;
+  // @ViewColumn()
+  // contractType_id: string;
 
-  @ViewColumn()
-  initialContractDate: Date;
+  // @ViewColumn()
+  // initialContractDate: Date;
 
-  @ViewColumn()
-  endContractDate: Date;
+  // @ViewColumn()
+  // endContractDate: Date;
 
   @ViewColumn()
   vacationHistory: number;

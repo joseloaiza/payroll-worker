@@ -95,18 +95,26 @@ export class PeriodService {
     status: string,
     year: number,
     company_id: string,
-  ) {
+  ): Promise<Period> {
     return await this.repo.find_period_by_status(status, year, company_id);
   }
 
   async get_period_on_process(
     companyId: string,
     year: number,
-  ): Promise<ResponsePeriodDto> {
+  ): Promise<Period> {
     const localDate = new Date(); // Current date
-    const currentYear = localDate.getFullYear();
-    const currentMonth = localDate.getMonth() + 1; // Months are 0-based
-    const currentDay = localDate.getDate();
+    const colombiaDate = new Date(
+      localDate.toLocaleString('en-US', {
+        timeZone: 'America/Bogota',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }),
+    );
+    const currentYear = colombiaDate.getFullYear();
+    const currentMonth = colombiaDate.getMonth() + 1; // Months are 0-based
+    const currentDay = colombiaDate.getDate();
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate(); // Get days in current month
 
     try {
@@ -118,8 +126,8 @@ export class PeriodService {
       );
 
       const isPastPeriod =
-        !periodInProcess || localDate > periodInProcess.endDate;
-      console.log(`Create new period ${isPastPeriod}`);
+        !periodInProcess || colombiaDate > periodInProcess.endDate;
+      console.log(`Create new period ${isPastPeriod} `);
 
       const resultPeriod = isPastPeriod
         ? await this.create(
@@ -131,7 +139,7 @@ export class PeriodService {
           )
         : periodInProcess;
 
-      return plainToInstance(ResponsePeriodDto, resultPeriod);
+      return resultPeriod;
     } catch (error) {
       throw error;
     }

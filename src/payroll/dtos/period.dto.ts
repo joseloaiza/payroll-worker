@@ -83,7 +83,7 @@ export class ResponsePeriodDto extends BaseDto {
 
   @IsOptional()
   @IsString()
-  month: string;
+  month: number;
 }
 
 export class FilterPeriodDto extends PaginationDto {

@@ -13,6 +13,10 @@ import { EmployeeService } from 'src/employee/employee.service';
 import { PayrollJobRepository } from 'src/payroll/jobs/payroll-job.repository';
 @Injectable()
 export class PayrollSchedulerService {
+  private readonly BATCH_SIZE = 500;
+  private readonly MAX_PARALLEL_BATCHES = 5;
+  private readonly EXECUTE_PAYROLL_CRON =
+    process.env.EXECUTE_PAYROLL_CRON === 'true';
   constructor(
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
@@ -39,165 +43,229 @@ export class PayrollSchedulerService {
   })
   //@Cron('0 */2 * * * *') // Runs every 30 seconds
   async processScheduledPayrolls() {
+    // Check if scheduler is enabled
+    if (!this.EXECUTE_PAYROLL_CRON) {
+      this.logger.debug(
+        'Payroll scheduler is disabled (EXECUTE_PAYROLL_CRON=false)',
+      );
+      return;
+    }
     this.logger.log('======================================');
-    this.logger.log('Starting scheduled payroll processing. ');
+    this.logger.log('Starting scheduled payroll processing.');
     this.logger.log('======================================');
 
+    const startTime = Date.now();
     try {
       // 1. Find all active companies
-      this.logger.log('find active companies');
       const companies = await this.companyservice.findActiveCompanies();
       this.logger.log(`Found ${companies.length} active companies`);
+      if (companies.length === 0) {
+        this.logger.warn('No active companies found for payroll processing');
+        return;
+      }
 
-      const companySummary = [];
-
-      // 2. For each company, find active payroll periods
-      for (const company of companies) {
-        try {
-          const result = await this.calculatePayrollCompany(company.id);
-          companySummary.push({
+      const companySummary = await Promise.allSettled(
+        companies.map((company) =>
+          this.calculatePayrollCompany(company.id).then((result) => ({
             companyId: company.id,
             companyName: company.name,
             ...result,
-          });
-        } catch (error) {
+          })),
+        ),
+      );
+
+      // Log results summary
+      const successful = companySummary.filter(
+        (r) => r.status === 'fulfilled',
+      ).length;
+      const failed = companySummary.filter(
+        (r) => r.status === 'rejected',
+      ).length;
+
+      this.logger.log(
+        `Payroll processing completed: ${successful} succeeded, ${failed} failed in ${Date.now() - startTime}ms`,
+      );
+
+      companySummary.forEach((result, index) => {
+        if (result.status === 'rejected') {
           this.logger.error(
-            `Error processing company ${company.name} (${company.id})`,
-            error.stack,
+            `Company ${companies[index].name} (${companies[index].id}) failed: ${result.reason.message}`,
           );
-          companySummary.push({
-            companyId: company.id,
-            companyName: company.name,
-            error: error.message,
-          });
         }
-      }
+      });
     } catch (error) {
       this.logger.error('Fatal error in payroll processing', error.stack);
+      throw error;
     }
   }
 
   async calculatePayrollCompany(companyId: string, employeeId?: string) {
-    if (employeeId)
-      this.logger.log(
-        `Starting payroll calculation for company ${companyId} & employee ${employeeId}`,
-      );
-    else
-      this.logger.log(`Starting payroll calculation for company ${companyId}`);
-
     this.validateCompanyId(companyId);
-
-    //get the period to proccess
-    this.logger.log('find current period');
-    const period = await this.periodService.get_period_on_process(
-      companyId,
-      new Date().getFullYear(),
-    );
     this.logger.log(
-      `Period Found ${period.number}  ${period.month} ${period.year}`,
+      `Starting payroll calculation for company ${companyId}${employeeId ? ` & employee ${employeeId}` : ''}`,
     );
-    // let period = await this.getCurrentPayrollPeriod(companyId);
-    // if (!period) {
-    //   period = this.logger.error(`Period for company ${companyId} not foud`);
-    //   throw new PayrollValidationError('Period not found');
-    // }
+    try {
+      //get the period to proccess
+      const period = await this.getCurrentPayrollPeriod(companyId);
 
-    const previousPeriod = await this.periodService.getLastPeriod(
-      period.year,
-      period.number,
-    );
-
-    let employeesId: string[] = [];
-    if (!employeeId) {
-      try {
-        const employees =
-          await this.employeeService.getEmployeesCompany(companyId);
-        employeesId = employees.map((e) => e.employee_id);
-      } catch (error) {
-        this.logger.error(
-          `Error getting employees for company ${companyId}: ${error.message}`,
-        );
-        throw new PayrollCalculationError(
-          'Failed to calculate company payroll',
-        );
-      }
-    } else {
-      employeesId.push(employeeId);
-    }
-
-    this.logger.log(employeesId);
-
-    const job = await this.payrollJobRepository.create({
-      companyId,
-      periodId: period.id,
-      totalEmployees: employeesId.length,
-      processedCount: 0,
-      status: 'processing',
-    });
-
-    const periodData = {
-      id: period.id,
-      number: period.number,
-      year: period.year,
-      month: period.month,
-      initialDate: period.initialDate,
-      endDate: period.endDate,
-      isActive: period.isActive,
-      previousPeriodYear: previousPeriod.year,
-      previousPeriodNumber: previousPeriod.number,
-    };
-
-    const allJobs = employeesId.map((empId) => ({
-      jobId: job.id,
-      employeeId: empId,
-      companyId,
-      period: periodData,
-    }));
-
-    // 2. Use emitBatch to send all jobs in optimized network requests
-    if (allJobs.length > 0) {
-      try {
-        await this.messaging.emitBatch(
-          'calculate_payroll',
-          allJobs,
-          process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE,
-        );
-        this.logger.log(
-          `Successfully  sent ${allJobs.length} payroll jobs via batching.`,
-        );
-      } catch (err) {
-        this.logger.error(
-          `Critical Error sending batch jobs for company ${companyId}: ${err.message}`,
-        );
-        throw new PayrollCalculationError(
-          'Failed to send all payroll jobs to the message queue',
-        );
-      }
-    } else {
       this.logger.log(
-        `No employees found for payroll calculation in company ${companyId}.`,
+        `Period Found: ${period.number}/${period.month}/${period.year}`,
       );
-    }
 
-    return job;
+      const previousPeriod = await this.periodService.getLastPeriod(
+        period.year,
+        period.number,
+      );
+
+      // Get employees
+      this.logger.log(
+        `getting employees for company ${companyId}${employeeId ? ` & employee ${employeeId}` : ''}`,
+      );
+      const employeesId = employeeId
+        ? [employeeId]
+        : await this.employeeService.getEmployeeIdsByCompany(companyId);
+
+      if (employeesId.length === 0) {
+        this.logger.warn(
+          `No employees found for payroll calculation in company ${companyId}`,
+        );
+        return { employeesProcessed: 0, jobId: null };
+      }
+
+      // Create job record
+      const job = await this.payrollJobRepository.create({
+        companyId,
+        periodId: period.id,
+        totalEmployees: employeesId.length,
+        periodData: {
+          id: period.id,
+          number: period.number,
+          year: period.year,
+          month: period.month,
+          initialDate: period.initialDate,
+          endDate: period.endDate,
+          isActive: period.isActive,
+          previousPeriodYear: previousPeriod.year,
+          previousPeriodNumber: previousPeriod.number,
+        },
+      });
+
+      const payrollJobs = employeesId.map((empId) => ({
+        jobId: job.id,
+        employeeId: empId,
+      }));
+
+      await this.sendMessagesInOptimalBatches(payrollJobs);
+
+      this.logger.log(
+        `✅ Successfully sent ${payrollJobs.length} payroll jobs for company ${companyId}`,
+      );
+
+      return {
+        jobId: job.id,
+        employeesProcessed: employeesId.length,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Error calculating payroll for company ${companyId}: ${error.message}`,
+        error.stack,
+      );
+      throw error;
+    }
   }
 
-  private validateCompanyId(companyId: string) {
-    if (!companyId) {
+  private validateCompanyId(companyId: string): void {
+    if (!companyId || companyId.trim() === '') {
       throw new PayrollValidationError('Company ID is required');
     }
   }
 
   private async getCurrentPayrollPeriod(companyId: string): Promise<Period> {
     try {
-      return await this.periodService.find_period_by_status(
-        'PR',
-        new Date().getFullYear(),
+      const period = await this.periodService.get_period_on_process(
         companyId,
+        new Date().getFullYear(),
       );
+      if (!period) {
+        throw new PayrollCalculationError(
+          `No active payroll period found for company ${companyId}`,
+        );
+      }
+      return period;
     } catch (error) {
       this.logger.error('Failed to get current payroll period', error.stack);
       throw new PayrollCalculationError('Could not retrieve payroll period');
     }
+  }
+
+  private async sendMessagesInOptimalBatches(messages: any[]): Promise<void> {
+    if (messages.length === 0) {
+      this.logger.warn('No messages to send');
+      return;
+    }
+
+    const batches = this.chunkArray(messages, this.BATCH_SIZE);
+    this.logger.log(
+      `Sending ${messages.length} messages in ${batches.length} batches`,
+    );
+
+    // // Azure Service Bus limits:
+    // // - Max batch size: 256 KB per batch
+    // // - Max messages per batch: 100-1000 (depends on tier)
+    // const BATCH_SIZE = 500; // Adjust based on your message size
+    // const MAX_PARALLEL_BATCHES = 5; // Don't overwhelm Service Bus
+
+    // const batches = this.chunkArray(messages, BATCH_SIZE);
+
+    // this.logger.log(
+    //   `Sending ${messages.length} messages in ${batches.length} batches`,
+    // );
+
+    // Send batches in parallel (with limit)
+    for (let i = 0; i < batches.length; i += this.MAX_PARALLEL_BATCHES) {
+      const batchGroup = batches.slice(i, i + this.MAX_PARALLEL_BATCHES);
+
+      const results = await Promise.allSettled(
+        batchGroup.map(async (batch, index) => {
+          const batchNum = i + index + 1;
+          try {
+            await this.messaging.emitBatch(
+              'calculate_payroll',
+              batch,
+              process.env.SERVICEBUS_PAYROLL_JOBS_QUEUE,
+            );
+            this.logger.log(
+              `✅ Sent batch ${batchNum}/${batches.length} (${batch.length} messages)`,
+            );
+          } catch (err) {
+            this.logger.error(
+              `❌ Failed to send batch ${batchNum}: ${err.message}`,
+            );
+            throw err; // Fail fast
+          }
+        }),
+      );
+      // Check if all batches in group succeeded
+      const failed = results.filter((r) => r.status === 'rejected');
+      if (failed.length > 0) {
+        throw new PayrollCalculationError(
+          `Failed to send ${failed.length} batch(es) to message queue`,
+        );
+      }
+    }
+  }
+
+  // private chunkArray<T>(array: T[], size: number): T[][] {
+  //   const chunks: T[][] = [];
+  //   for (let i = 0; i < array.length; i += size) {
+  //     chunks.push(array.slice(i, i + size));
+  //   }
+  //   return chunks;
+  // }
+
+  private chunkArray<T>(array: T[], size: number): T[][] {
+    return Array.from({ length: Math.ceil(array.length / size) }, (_, i) =>
+      array.slice(i * size, (i + 1) * size),
+    );
   }
 }

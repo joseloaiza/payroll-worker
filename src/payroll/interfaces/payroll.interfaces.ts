@@ -46,10 +46,16 @@ export interface PayrollContext {
     riskPercentage: number;
     transportAssistance: boolean;
     variableSalary: boolean;
-    initialContractDate: Date;
-    endContractDate: Date;
+    contractsInPeriod: Contract[];
+    initialContract: Contract;
   };
   // Add other relevant data as needed
+}
+
+export interface Contract {
+  initialContractDate: Date;
+  endContractDate: Date | null;
+  classification: string;
 }
 
 export interface MappingConfig {
