@@ -117,7 +117,7 @@ export class PayrollService {
       );
       // ❌ Stop process and propagate error
       throw new Error(
-        `Payroll calculation failed for employee ${employeeId}: ${error.message}.`,
+        `Cálculo de nómina para el empleado ${employeeId} con errores: ${error.message}.`,
       );
     }
   }
@@ -131,12 +131,54 @@ export class PayrollService {
     const employee = await this.employeeService.getEmployee(employeeId);
 
     if (!employee) {
-      this.logger.error(`Employee ${employeeId} not foud`);
-      throw new PayrollValidationError('Employee not found');
+      this.logger.error(`Build Context:Employee ${employeeId} not foud`);
+      throw new PayrollValidationError('El empleado no existe en el sistema');
+    }
+
+    if (employee.endSalaryDate < period.initialDate) {
+      this.logger.error(
+        `Build Context:Employee Salary for ${employeeId} not foud`,
+      );
+      throw new PayrollValidationError(
+        'Empleado no tiene datos de salario vigente.',
+      );
     }
 
     const realEndDatePeriod = getRealEndDatePeriod(period.endDate);
     period.endDate = realEndDatePeriod;
+
+    //get contracts
+    const contractsInperiod = await this.employeeService.getContractsInPeriod(
+      employeeId,
+      period.initialDate,
+      period.endDate,
+    );
+    if (!contractsInperiod) {
+      this.logger.error(`Build Context:Employee ${employeeId} not foud`);
+      throw new PayrollValidationError('Empleado no tiene datos de contrato');
+    }
+
+    const initialContract =
+      await this.employeeService.getInitialContract(employeeId);
+
+    const contracts =
+      await this.employeeService.getContractsEmployee(employeeId);
+    if (!contracts) {
+      this.logger.error(`Build Context:Employee ${employeeId} not foud`);
+      throw new PayrollValidationError('Empleado no tiene datos de contrato');
+    }
+
+    const periodContracts = contractsInperiod.map((contract) => ({
+      initialContractDate: contract.initialContractDate,
+      endContractDate: contract.endContractDate ?? null,
+      classification: contract.contractType_id, // or custom logic
+    }));
+
+    const initialContractData = {
+      initialContractDate: initialContract.initialContractDate,
+      endContractDate: initialContract.endContractDate ?? null,
+      classification: initialContract.contractType_id, // or custom logic
+    };
 
     return {
       employeeId,
@@ -161,8 +203,8 @@ export class PayrollService {
         riskPercentage: employee.percentageWorkPlaceRisks,
         transportAssistance: employee.transportAssistance,
         variableSalary: employee.variableSalary,
-        initialContractDate: employee.initialContractDate,
-        endContractDate: employee.endContractDate,
+        contractsInPeriod: periodContracts,
+        initialContract: initialContractData,
       },
     };
   }
@@ -190,7 +232,7 @@ export class PayrollService {
         error.stack,
       );
       throw new PayrollCalculationError(
-        `Could not clean concepts for employee`,
+        `No se pudieron limpiar los conceptos para el empleado`,
       );
     }
   }
@@ -407,7 +449,7 @@ export class PayrollService {
         error.stack,
       );
       throw new PayrollCalculationError(
-        'Could not calculate absentees novelties',
+        `No se pudo calcular las novedades por ausentismos: ${error.message}`,
       );
     }
 
@@ -480,7 +522,9 @@ export class PayrollService {
       this.logger.error(
         `Error calculating recurrents for employee: ${employeeId}`,
       );
-      throw new Error(`Failed to calculate recurrents: ${error.message}`);
+      throw new PayrollCalculationError(
+        `No se pudo calcular los recurrentes: ${error.message}`,
+      );
     }
   }
 
@@ -497,7 +541,7 @@ export class PayrollService {
       totalAbseenteDays,
     } = context;
     const { salary, salaryTypeCode } = salaryData;
-    const { initialContractDate, endContractDate } = contractData;
+    const { contractsInPeriod } = contractData;
     const numDaysPeriod = new Date(period.endDate).getDate();
 
     if (!employeeId || !companyId || !period || !salaryData || !contractData) {
@@ -510,15 +554,19 @@ export class PayrollService {
         CONCEPT_IDS_SALARY,
       );
 
-      const workedDays = calculateWorkedDays(
-        initialContractDate,
-        endContractDate,
-        period.initialDate,
-        period.endDate,
-        numDaysPeriod,
-      );
+      //calculate total worked days for the active contracts that are between the period range.
+      const totalWorkedDays = contractsInPeriod.reduce((total, contract) => {
+        const workedDays = calculateWorkedDays(
+          contract.initialContractDate,
+          contract.endContractDate,
+          period.initialDate,
+          period.endDate,
+          numDaysPeriod,
+        );
+        return total + workedDays;
+      }, 0);
 
-      const daysSalary = workedDays - totalAbseenteDays;
+      const daysSalary = totalWorkedDays - totalAbseenteDays;
 
       const valueSalary = Math.round(((salary / 30) * daysSalary * 100) / 100);
 
@@ -529,8 +577,13 @@ export class PayrollService {
         [salaryCodes.pensionAllowanceCon, salaryCodes.pensionAllowance],
       ]);
       const movementCode = movementCodes.get(salaryTypeCode) || undefined;
+      if (!movementCode) {
+        this.logger.warn(
+          `Unknown salary type code: ${salaryTypeCode} for employee ${employeeId}`,
+        );
+      }
       const movementData = [
-        { days: workedDays, value: 0, code: salaryCodes.workedDaysPeriod },
+        { days: totalWorkedDays, value: 0, code: salaryCodes.workedDaysPeriod },
       ];
 
       if (movementCode) {
@@ -554,8 +607,13 @@ export class PayrollService {
       context.rawSalary = valueSalary;
       return successes;
     } catch (error) {
-      this.logger.error(`Error calculating salary for employee: ${employeeId}`);
-      throw new Error(`Failed to calculate salary: ${error.message}`);
+      this.logger.error(
+        `Error calculating salary for employee: ${employeeId}`,
+        error.stack,
+      );
+      throw new PayrollCalculationError(
+        `No se pudo calcular el salario: ${error.message}`,
+      );
     }
   }
 
@@ -655,7 +713,9 @@ export class PayrollService {
       this.logger.error(
         `Error calculating excess 1393 for employee: ${employeeId}`,
       );
-      throw new Error(`Failed to calculate excess 1393: ${error.message}`);
+      throw new PayrollCalculationError(
+        `No se pudo calcular el exceso a la ley 1393: ${error.message}`,
+      );
     }
   }
 
@@ -698,7 +758,9 @@ export class PayrollService {
       this.logger.error(
         `Error calculating transport base for employee: ${context.employeeId}`,
       );
-      throw new Error(`Failed to calculate ransport base: ${error.message}`);
+      throw new Error(
+        `No se pudo calcular la base para el transporte: ${error.message}`,
+      );
     }
   }
 
@@ -724,7 +786,6 @@ export class PayrollService {
         this.codesConfigService,
       );
       const { ttle, autl, smlv } = values;
-
       const MovementWorkedDays =
         await this.movementService.getMovementByConceptAndPeriodNumber(
           employeeId,
@@ -732,6 +793,7 @@ export class PayrollService {
           period.number,
           transportCodes.workedDaysPeriod,
         );
+
       let transportValue = 0;
       const isEligibleForTransport = actualSalary <= ttle * smlv;
       const dailyAllowance = autl / 30;
@@ -772,7 +834,7 @@ export class PayrollService {
         `Error calculating transport assistance  for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate  transport assistance: ${error.message}`,
+        `No se pudo calcular el auxilio de transporte: ${error.message}`,
       );
     }
   }

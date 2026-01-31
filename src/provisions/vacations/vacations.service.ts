@@ -32,7 +32,7 @@ export class VacationsService {
       salaryData,
       vacationHistory,
     } = context;
-    const { initialContractDate } = contractData;
+    const { initialContract } = contractData;
     const { year, month } = period;
     const { salary } = salaryData;
 
@@ -51,12 +51,14 @@ export class VacationsService {
         );
 
       const workedVacationDays =
-        differenceInDays(period.endDate, initialContractDate) + 1 + daysaffect;
+        differenceInDays(period.endDate, initialContract.initialContractDate) +
+        1 +
+        daysaffect;
 
       let averageInitDate: Date;
       if (workedVacationDays >= 360)
         averageInitDate = subYears(period.endDate, 1);
-      else averageInitDate = initialContractDate;
+      else averageInitDate = initialContract.initialContractDate;
 
       const [
         variablePartProvision,
@@ -76,7 +78,7 @@ export class VacationsService {
         ),
         this.movementService.getSumMovementsQuantitiesBetweenDates(
           employeeId,
-          initialContractDate,
+          initialContract.initialContractDate,
           period.endDate,
           {
             ['code']: 'M035',
@@ -84,7 +86,7 @@ export class VacationsService {
         ),
         this.movementService.getSumMovementsQuantitiesBetweenDates(
           employeeId,
-          initialContractDate,
+          initialContract.initialContractDate,
           period.endDate,
           {
             ['code']: 'M036',
@@ -187,7 +189,7 @@ export class VacationsService {
         `Error calculating vacations provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate vacations provision : ${error.message}`,
+        `No se pudo calcular la provisión de las vacaciones : ${error.message}`,
       );
     }
   }

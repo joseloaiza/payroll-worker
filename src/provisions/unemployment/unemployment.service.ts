@@ -28,7 +28,7 @@ export class UnemploymentService {
     conceptsMap: Map<string, string>,
   ): Promise<Movement[]> {
     const { employeeId, companyId, period, contractData, salaryData } = context;
-    const { initialContractDate, regimeCode } = contractData;
+    const { initialContract, regimeCode } = contractData;
     const { salary } = salaryData;
 
     const unemploymentCodes = await getConceptCodes(
@@ -50,7 +50,7 @@ export class UnemploymentService {
           period.month,
           period.year,
           period.endDate,
-          initialContractDate,
+          initialContract.initialContractDate,
           regimeCode,
           false,
         ),
@@ -146,9 +146,7 @@ export class UnemploymentService {
       this.logger.error(
         `Error calculating unemployment provision for employee: ${context.employeeId}`,
       );
-      throw new Error(
-        `Failed to calculate unemployment provision : ${error.message}`,
-      );
+      throw new Error(`No se pudo calcular las cesantias : ${error.message}`);
     }
   }
 
@@ -158,7 +156,7 @@ export class UnemploymentService {
     calculaeUnpaidValue: number,
   ): Promise<Movement[]> {
     const { employeeId, companyId, period, contractData } = context;
-    const { initialContractDate, regimeCode } = contractData;
+    const { initialContract, regimeCode } = contractData;
 
     const interestUnemploymentCodes = await getConceptCodes(
       this.codesConfigService,
@@ -177,7 +175,7 @@ export class UnemploymentService {
           period.month,
           period.year,
           period.endDate,
-          initialContractDate,
+          initialContract.initialContractDate,
           regimeCode,
           true,
         ),
@@ -277,10 +275,10 @@ export class UnemploymentService {
       return movements;
     } catch (error) {
       this.logger.error(
-        `Error calculating unemployment provision for employee: ${context.employeeId}`,
+        `Error calculating unemployment rate provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate unemployment provision : ${error.message}`,
+        `No se pudo calcular los intereses a la cesantias : ${error.message}`,
       );
     }
   }

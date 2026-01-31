@@ -1,14 +1,19 @@
-import { IsString, IsNumber } from 'class-validator';
-
 export class CreatePayrollJobdDto {
-  @IsString()
   companyId: string;
-  @IsString()
   periodId: string;
-  @IsNumber()
   totalEmployees: number;
-  @IsNumber()
-  processedCount: number;
-  @IsString()
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  processedCount?: number;
+  failedCount?: number;
+  status?: 'processing' | 'completed' | 'completed_with_errors' | 'failed';
+  periodData: {
+    id: string;
+    number: number;
+    year: number;
+    month: number;
+    initialDate: Date;
+    endDate: Date;
+    isActive: boolean;
+    previousPeriodYear: number;
+    previousPeriodNumber: number;
+  };
 }
