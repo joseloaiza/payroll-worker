@@ -1,5 +1,6 @@
+import { differenceInDays360 } from 'src/utils/date-utilities';
 import { MappingConfig } from '../interfaces/payroll.interfaces';
-import { differenceInDays, isBefore, isAfter } from 'date-fns';
+import { isBefore, isAfter } from 'date-fns';
 
 export function buildMovementData(
   source: Record<string, any>,
@@ -26,7 +27,6 @@ export function calculateWorkedDays(
   endContractDate: Date | null,
   iniPeriodDate: Date,
   endPeriodDate: Date,
-  numDaysPeriod: number,
 ): number {
   // If contract ended before period started, no worked days
   if (endContractDate && isBefore(endContractDate, iniPeriodDate)) {
@@ -49,19 +49,9 @@ export function calculateWorkedDays(
       ? endContractDate
       : endPeriodDate;
 
-  // Calculate days (inclusive: both start and end dates count)
-  let workedDays = differenceInDays(effectiveEnd, effectiveStart) + 1;
-
-  // Ensure we don't exceed the period's actual days
-  workedDays = Math.min(workedDays, numDaysPeriod);
-
-  // Normalize to 30 days for any month with 28, 29, or 31 days
-  if (workedDays === 28 || workedDays === 29 || workedDays === 31) {
-    workedDays = 30;
-  }
-
+  const WorkedDays = differenceInDays360(effectiveStart, effectiveEnd);
   // Ensure result is never negative
-  return Math.max(workedDays, 0);
+  return Math.max(WorkedDays, 0);
 }
 
 // export function calculateWorkedDays(
@@ -99,9 +89,17 @@ export function calculateWorkedDays(
 // }
 
 export function getRealEndDatePeriod(endPeriod: Date): Date {
-  const newEndDatePeriod =
-    endPeriod.getDate() === 15
-      ? new Date(endPeriod)
-      : new Date(endPeriod.getFullYear(), endPeriod.getMonth(), 30);
-  return newEndDatePeriod;
+  const day = endPeriod.getUTCDate();
+  const month = endPeriod.getUTCMonth();
+  const year = endPeriod.getUTCFullYear();
+
+  if (day === 15) {
+    return new Date(endPeriod); // return same date
+  }
+
+  // Get the last day of the month
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+  // If day is end of month (28, 29, 30, 31) return the real last day
+  return new Date(Date.UTC(year, month, lastDayOfMonth, 12, 0, 0));
 }

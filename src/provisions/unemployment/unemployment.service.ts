@@ -8,10 +8,10 @@ import {
   CONCEPT_IDS_UNEMPLOYMENT_INTEREST,
 } from './../../constants/constants';
 import { MovementData } from './../../utils/interfaces/interfaces';
-import { differenceInDays } from 'date-fns';
 import { Movement } from 'src/movements/entities/movement.entity';
 import { PayrollContext } from 'src/payroll/interfaces/payroll.interfaces';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { differenceInDays360 } from 'src/utils/date-utilities';
 
 @Injectable()
 export class UnemploymentService {
@@ -143,10 +143,11 @@ export class UnemploymentService {
 
       return movements;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating unemployment provision for employee: ${context.employeeId}`,
       );
-      throw new Error(`No se pudo calcular las cesantias : ${error.message}`);
+      throw new Error(`No se pudo calcular las cesantias : ${message}`);
     }
   }
 
@@ -274,11 +275,12 @@ export class UnemploymentService {
 
       return movements;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating unemployment rate provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular los intereses a la cesantias : ${error.message}`,
+        `No se pudo calcular los intereses a la cesantias : ${message}`,
       );
     }
   }
@@ -319,42 +321,27 @@ export class UnemploymentService {
       throw new Error('Invalid date parameters');
     }
 
-    const new_date_end_period =
-      endPeriod.getDate() === 15
-        ? new Date(endPeriod)
-        : new Date(endPeriod.getFullYear(), endPeriod.getMonth(), 30);
+    const initialProvisionDate = await this.resolveInitialProvisionDate(
+      interest,
+      endPeriod,
+      admissionDate,
+      regimeCode,
+    );
 
-    let initialProvisionDate: Date;
-    // Determine initial provision date based on regime
-    if (!interest) {
-      const isSpecialRegime =
-        (await this.codesConfigService.getCodeById('0060')) === regimeCode;
-      initialProvisionDate = isSpecialRegime
-        ? new Date(`${endPeriod.getFullYear()}-01-01`) // Start of year for special regime
-        : new Date(admissionDate);
-    } else {
-      initialProvisionDate = new Date(`${endPeriod.getFullYear()}-01-01`);
+    const baseDays = differenceInDays360(initialProvisionDate, endPeriod);
+
+    if (interest) {
+      return baseDays;
     }
 
-    if (admissionDate > initialProvisionDate) {
-      initialProvisionDate = new Date(admissionDate);
-    }
-    //get the days that affect antiquity
-
-    if (!interest) {
-      const { totalQuantity: daysaffect } =
-        await this.movementService.getMovementsAffectingAntiquity(
-          month,
-          year,
-          employee_id,
-        );
-      // worked days unemploye
-      return (
-        differenceInDays(new_date_end_period, initialProvisionDate) - daysaffect
+    const { totalQuantity: daysAffected } =
+      await this.movementService.getMovementsAffectingAntiquity(
+        month,
+        year,
+        employee_id,
       );
-    }
 
-    return differenceInDays(new_date_end_period, initialProvisionDate);
+    return baseDays - daysAffected;
   }
 
   private async calculateBaseConcepts(
@@ -398,5 +385,32 @@ export class UnemploymentService {
       totalQuantity: quantity,
       totalValue: value,
     };
+  }
+
+  private async resolveInitialProvisionDate(
+    interest: boolean,
+    endPeriod: Date,
+    admissionDate: Date,
+    regimeCode: string,
+  ): Promise<Date> {
+    const startOfYear = new Date(`${endPeriod.getUTCFullYear()}-01-01`);
+
+    let initialDate: Date;
+
+    if (interest) {
+      initialDate = startOfYear;
+    } else {
+      const specialRegimeCode =
+        await this.codesConfigService.getCodeById('0060');
+      const isSpecialRegime = specialRegimeCode === regimeCode;
+      initialDate = isSpecialRegime ? startOfYear : new Date(admissionDate);
+    }
+
+    // Employee admitted after the calculated start — use admission date as the floor
+    if (admissionDate > initialDate) {
+      initialDate = admissionDate;
+    }
+
+    return initialDate;
   }
 }

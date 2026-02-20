@@ -140,7 +140,7 @@ export class SocialSecurityService {
         SSULB_value +
         excess1393;
 
-      const numDaysPeriod = new Date(period.endDate).getDate();
+      const numDaysPeriod = new Date(period.endDate).getUTCDate();
       const SMLV_value = numDaysPeriod === 15 ? smlv / 2 : smlv;
 
       // Fetch stored base salary same month but before period
@@ -175,10 +175,11 @@ export class SocialSecurityService {
 
       return { movements: successes, IBCSSP };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating excess icbf for employee: ${employeeId}`,
       );
-      throw new Error(`Failed to calculate icbf: ${error.message}`);
+      throw new Error(`Failed to calculate icbf: ${message}`);
     }
   }
 
@@ -307,11 +308,12 @@ export class SocialSecurityService {
       );
       return successes;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating excess health contribution for  employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la contribución a la salud: ${error.message}`,
+        `No se pudo calcular la contribución a la salud: ${message}`,
       );
     }
   }
@@ -378,11 +380,12 @@ export class SocialSecurityService {
       );
       return successes;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating excess pension contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la contribución a la pensión: ${error.message}`,
+        `No se pudo calcular la contribución a la pensión: ${message}`,
       );
     }
   }
@@ -450,11 +453,12 @@ export class SocialSecurityService {
       );
       return successes;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating excess solidarity contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `Failed to calculate solidarity contribution: ${error.message}`,
+        `Failed to calculate solidarity contribution: ${message}`,
       );
     }
   }
@@ -551,11 +555,12 @@ export class SocialSecurityService {
       );
       return successes;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating excess parafiscal contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la contribución parafiscal: ${error.message}`,
+        `No se pudo calcular la contribución parafiscal: ${message}`,
       );
     }
   }
@@ -652,11 +657,12 @@ export class SocialSecurityService {
       }
       return null;
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating ss risk contribution for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la contribución de riesgo seguridad social: ${error.message}`,
+        `No se pudo calcular la contribución de riesgo seguridad social: ${message}`,
       );
     }
   }
