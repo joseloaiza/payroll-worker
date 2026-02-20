@@ -6,8 +6,8 @@ import { CompanyPayrollService } from './../../company/company-payroll/company-p
 import { MovementsService } from './../../movements/movements.service';
 import { PayrollConstantsService } from './../../config/payroll-constants/payroll-constants.service';
 import { CONCEPT_IDS_BONUS_PAYMENT } from 'src/constants/constants';
-import { differenceInDays } from 'date-fns';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { differenceInDays360 } from 'src/utils/date-utilities';
 
 @Injectable()
 export class BonusPaymentService {
@@ -166,11 +166,12 @@ export class BonusPaymentService {
         }),
       );
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
         `Error calculating bonus payment provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la provisión para la prima: ${error.message}`,
+        `No se pudo calcular la provisión para la prima: ${message}`,
       );
     }
   }
@@ -188,39 +189,33 @@ export class BonusPaymentService {
       throw new Error('Invalid date parameters');
     }
 
-    const new_date_end_period =
-      endPeriod.getDate() === 15
-        ? new Date(endPeriod)
-        : new Date(endPeriod.getFullYear(), endPeriod.getMonth(), 30);
-
     let initialProvisionDate =
       month < 7
-        ? new Date(`${endPeriod.getFullYear()}-01-01`) // Start of year for special regime
-        : new Date(`${endPeriod.getFullYear()}-07-01`);
+        ? new Date(`${endPeriod.getUTCFullYear()}-01-01`) // Start of year for special regime
+        : new Date(`${endPeriod.getUTCFullYear()}-07-01`);
 
     if (admissionDate > initialProvisionDate) {
-      initialProvisionDate = new Date(admissionDate);
+      initialProvisionDate = admissionDate;
     }
 
-    //get the days that affect antiquity
+    // Get the days that affect antiquity
     const { affectAbsenteeLB } =
       await this.companyPayrollService.findOne(company_id);
 
-    let days: number = 0;
-    if (affectAbsenteeLB) {
-      const { totalQuantity: daysaffect } =
-        await this.movementsService.getMovementsAffectingAntiquity(
-          month,
-          year,
-          employee_id,
-        );
-      days =
-        differenceInDays(new_date_end_period, initialProvisionDate) -
-        daysaffect;
-    }
-    days = differenceInDays(new_date_end_period, initialProvisionDate);
+    const baseDays = differenceInDays360(initialProvisionDate, endPeriod);
 
-    // worked days unemploye
-    return days;
+    if (!affectAbsenteeLB) {
+      return baseDays;
+    }
+
+    const { totalQuantity: daysAffected } =
+      await this.movementsService.getMovementsAffectingAntiquity(
+        month,
+        year,
+        employee_id,
+      );
+
+    // Worked days for employee
+    return baseDays - daysAffected;
   }
 }

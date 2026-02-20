@@ -112,10 +112,12 @@ export class PeriodService {
         day: '2-digit',
       }),
     );
-    const currentYear = colombiaDate.getFullYear();
-    const currentMonth = colombiaDate.getMonth() + 1; // Months are 0-based
-    const currentDay = colombiaDate.getDate();
-    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate(); // Get days in current month
+    const currentYear = colombiaDate.getUTCFullYear();
+    const currentMonth = colombiaDate.getUTCMonth() + 1; // Months are 0-based
+    const currentDay = colombiaDate.getUTCDate();
+    const daysInMonth = new Date(
+      Date.UTC(currentYear, currentMonth, 0),
+    ).getUTCDate(); // Get days in current month
 
     try {
       // Find the most recent period for the given company and year

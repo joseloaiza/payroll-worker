@@ -38,6 +38,7 @@ import {
   CONCEPT_IDS_TRANSPORT,
   CONSTANTS_IDS_TRANSPORT,
 } from './../constants/constants';
+import { convertDateToUTC } from 'src/utils/date-utilities';
 
 @Injectable()
 export class PayrollService {
@@ -58,18 +59,21 @@ export class PayrollService {
   ) {}
   async calculate(employeeId: string, companyId: string, rawPeriod: any) {
     try {
+      const initialDateObj = convertDateToUTC(rawPeriod.initialDate);
+      const endDateObj = convertDateToUTC(rawPeriod.endDate);
+
       const period: IPeriod = {
         ...rawPeriod,
-        year: rawPeriod.year !== null ? Number(rawPeriod.year) : null,
-        month: rawPeriod.month !== null ? Number(rawPeriod.month) : null,
+        year: initialDateObj.getUTCFullYear(),
+        month: initialDateObj.getUTCMonth() + 1,
         number: rawPeriod.number !== null ? Number(rawPeriod.number) : null,
-        initialDate: rawPeriod.initialDate
-          ? new Date(rawPeriod.initialDate)
-          : null,
-        endDate: rawPeriod.endDate ? new Date(rawPeriod.endDate) : null,
+        initialDate: initialDateObj,
+        endDate: endDateObj,
         previousPeriodYear: rawPeriod.previousPeriodYear,
         previousPeriodNumber: rawPeriod.previousPeriodNumber,
       };
+
+      this.logger.log(`Period year: ${period.year}, month: ${period.month}`);
       const context = await this.buildPayrollContext(
         employeeId,
         companyId,
@@ -112,12 +116,14 @@ export class PayrollService {
         movementContext,
       );
     } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Payroll calculation failed for employee ${employeeId}: ${error.message}`,
+        `Payroll calculation failed for employee ${employeeId}: ${errorMessage}`,
       );
       // ❌ Stop process and propagate error
       throw new Error(
-        `Cálculo de nómina para el empleado ${employeeId} con errores: ${error.message}.`,
+        `Cálculo de nómina para el empleado ${employeeId} con errores: ${errorMessage}.`,
       );
     }
   }
@@ -145,7 +151,7 @@ export class PayrollService {
     }
 
     const realEndDatePeriod = getRealEndDatePeriod(period.endDate);
-    period.endDate = realEndDatePeriod;
+    //period.endDate = realEndDatePeriod;
 
     //get contracts
     const contractsInperiod = await this.employeeService.getContractsInPeriod(
@@ -229,7 +235,7 @@ export class PayrollService {
     } catch (error) {
       this.logger.error(
         `Failed cleaning calculated concepts payroll ${context.employeeId}`,
-        error.stack,
+        error instanceof Error ? error.stack : String(error),
       );
       throw new PayrollCalculationError(
         `No se pudieron limpiar los conceptos para el empleado`,
@@ -446,10 +452,10 @@ export class PayrollService {
     } catch (error) {
       this.logger.error(
         `Failed calculating absentees for ${context.employeeId} on company ${context.companyId}`,
-        error.stack,
+        error instanceof Error ? error.stack : String(error),
       );
       throw new PayrollCalculationError(
-        `No se pudo calcular las novedades por ausentismos: ${error.message}`,
+        `No se pudo calcular las novedades por ausentismos: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -523,7 +529,7 @@ export class PayrollService {
         `Error calculating recurrents for employee: ${employeeId}`,
       );
       throw new PayrollCalculationError(
-        `No se pudo calcular los recurrentes: ${error.message}`,
+        `No se pudo calcular los recurrentes: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -542,7 +548,6 @@ export class PayrollService {
     } = context;
     const { salary, salaryTypeCode } = salaryData;
     const { contractsInPeriod } = contractData;
-    const numDaysPeriod = new Date(period.endDate).getDate();
 
     if (!employeeId || !companyId || !period || !salaryData || !contractData) {
       this.logger.error('Missing required payroll context fields');
@@ -561,7 +566,6 @@ export class PayrollService {
           contract.endContractDate,
           period.initialDate,
           period.endDate,
-          numDaysPeriod,
         );
         return total + workedDays;
       }, 0);
@@ -609,10 +613,10 @@ export class PayrollService {
     } catch (error) {
       this.logger.error(
         `Error calculating salary for employee: ${employeeId}`,
-        error.stack,
+        error instanceof Error ? error.stack : String(error),
       );
       throw new PayrollCalculationError(
-        `No se pudo calcular el salario: ${error.message}`,
+        `No se pudo calcular el salario: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -714,7 +718,7 @@ export class PayrollService {
         `Error calculating excess 1393 for employee: ${employeeId}`,
       );
       throw new PayrollCalculationError(
-        `No se pudo calcular el exceso a la ley 1393: ${error.message}`,
+        `No se pudo calcular el exceso a la ley 1393: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -759,7 +763,7 @@ export class PayrollService {
         `Error calculating transport base for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la base para el transporte: ${error.message}`,
+        `No se pudo calcular la base para el transporte: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -834,7 +838,7 @@ export class PayrollService {
         `Error calculating transport assistance  for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular el auxilio de transporte: ${error.message}`,
+        `No se pudo calcular el auxilio de transporte: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
