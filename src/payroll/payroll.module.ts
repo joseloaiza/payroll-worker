@@ -29,6 +29,10 @@ import { PeriodRepository } from './period/period.repository';
 import { PeriodStatusRepository } from './period-status/period-status.repository';
 import { PayrollStatusListener } from './jobs/payroll-status-listener.service';
 import { PayrollJob } from './entities/payroll-jobs.entity';
+import { SnapshotService } from 'src/snapshot/snapshot.service';
+import { PayrollEmployeeSnapshot } from 'src/snapshot/entitiy/payroll_employee_snapshot.entity';
+import { PayrollEmployeeSnapshotInput } from 'src/snapshot/entitiy/payroll_employee_snapshot-input.entity';
+import { PayrollInputCatalog } from 'src/snapshot/entitiy/payroll-input-catalog.entity';
 
 @Module({
   imports: [
@@ -39,6 +43,9 @@ import { PayrollJob } from './entities/payroll-jobs.entity';
       AbsenteeHistory,
       Company,
       PayrollJob,
+      PayrollEmployeeSnapshot,
+      PayrollEmployeeSnapshotInput,
+      PayrollInputCatalog,
     ]),
     EmployeeModule,
     MovementsModule,
@@ -58,6 +65,7 @@ import { PayrollJob } from './entities/payroll-jobs.entity';
     PayrollSchedulerService,
     PeriodService,
     PeriodStatusService,
+    SnapshotService,
     PayrollStatusListener,
     PeriodRepository,
     PeriodStatusRepository,
@@ -66,5 +74,6 @@ import { PayrollJob } from './entities/payroll-jobs.entity';
     CompanyRepository,
     PayrollJobRepository,
   ],
+  exports: [SnapshotService],
 })
 export class PayrollModule {}
