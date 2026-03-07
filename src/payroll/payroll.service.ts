@@ -11,7 +11,7 @@ import { UnemploymentService } from './../provisions/unemployment/unemployment.s
 import { BonusPaymentService } from './../provisions/bonus-payment/bonus-payment.service';
 import { SocialSecurityService } from './../social-security/social-security.service';
 import { VacationsService } from './../provisions/vacations/vacations.service';
-//import { Period } from './entities/period.entity';
+
 import { Movement } from './../movements/entities/movement.entity';
 import {
   diseaseMappings,
@@ -39,6 +39,7 @@ import {
   CONSTANTS_IDS_TRANSPORT,
 } from './../constants/constants';
 import { convertDateToUTC } from 'src/utils/date-utilities';
+import { SnapshotService } from 'src/snapshot/snapshot.service';
 
 @Injectable()
 export class PayrollService {
@@ -54,6 +55,8 @@ export class PayrollService {
     private readonly codesConfigService: CodesConfigService,
     private readonly payrollConstantsService: PayrollConstantsService,
     private readonly vacationsService: VacationsService,
+    private readonly snapshotService: SnapshotService,
+
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
@@ -90,6 +93,21 @@ export class PayrollService {
 
       //delete the calculate concetps
       await this.cleanExistingCalculations(context, conceptsCompany.concepts);
+
+      await this.snapshotService.deleteSnapshotsForPeriod(
+        companyId,
+        employeeId,
+        period.id,
+      );
+
+      //create snapshot of the initial data before calculate
+      await this.snapshotService.createSnapshot(
+        companyId,
+        employeeId,
+        context,
+        period,
+        period.id,
+      );
       await this.calculateCoreComponents(
         context,
         conceptsCompany.conceptMap,
@@ -212,6 +230,7 @@ export class PayrollService {
         contractsInPeriod: periodContracts,
         initialContract: initialContractData,
       },
+      employeeContext: employee,
     };
   }
 

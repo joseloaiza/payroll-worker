@@ -9,6 +9,7 @@ import { IPeriod } from 'src/payroll/interfaces/payroll.interfaces';
 export class MovementsService {
   constructor(
     private readonly repo: MovementRepository,
+
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}

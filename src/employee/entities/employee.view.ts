@@ -66,15 +66,35 @@ export class EmployeeFullView {
   @ViewColumn()
   salaryTypeCode: string;
 
-  // @ViewColumn()
-  // contractType_id: string;
-
-  // @ViewColumn()
-  // initialContractDate: Date;
-
-  // @ViewColumn()
-  // endContractDate: Date;
-
   @ViewColumn()
   vacationHistory: number;
+
+  @ViewColumn()
+  entityHealth_id: string;
+  @ViewColumn()
+  entityPension_id: string;
+  @ViewColumn()
+  contributorType_id: string;
+  @ViewColumn()
+  contributorSubType_id: string;
+  @ViewColumn()
+  entitySeverance_id: string;
+
+  @ViewColumn()
+  bank_id: string;
+  @ViewColumn()
+  accountType_id: string;
+  @ViewColumn()
+  accountNumber: string;
+
+  @ViewColumn()
+  costCenter_id: string;
+  @ViewColumn()
+  area_id: string;
+  @ViewColumn()
+  position_id: string;
+  @ViewColumn()
+  subsidiary_id: string;
+  @ViewColumn()
+  salaryType_id: string;
 }

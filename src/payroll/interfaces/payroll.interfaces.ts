@@ -1,3 +1,4 @@
+import { EmployeeFullView } from 'src/employee/entities/employee.view';
 import { Movement } from '../../movements/entities/movement.entity';
 
 export interface PayrollCalculationResult {
@@ -49,6 +50,7 @@ export interface PayrollContext {
     contractsInPeriod: Contract[];
     initialContract: Contract;
   };
+  employeeContext: EmployeeFullView;
   // Add other relevant data as needed
 }
 
