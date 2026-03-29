@@ -9,6 +9,8 @@ import { differenceInDays, subYears } from 'date-fns';
 import { Movement } from 'src/movements/entities/movement.entity';
 import { PayrollContext } from 'src/payroll/interfaces/payroll.interfaces';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { AbsenteeHistoryRepository } from './../../novelties/absenteeism/absentee-history.repository';
+import { numberDays } from './../../utils/date-utilities';
 
 @Injectable()
 export class VacationsService {
@@ -16,6 +18,7 @@ export class VacationsService {
     private readonly codesConfigService: CodesConfigService,
     private readonly payrollConstantsService: PayrollConstantsService,
     private readonly movementService: MovementsService,
+    private readonly absenteeHistoryRepo: AbsenteeHistoryRepository,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
@@ -189,7 +192,67 @@ export class VacationsService {
         `Error calculating vacations provision for employee: ${context.employeeId}`,
       );
       throw new Error(
-        `No se pudo calcular la provisión de las vacaciones : ${error.message}`,
+        `No se pudo calcular la provisión de las vacaciones : ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async calculateVacationsEnjoyed(
+    context: PayrollContext,
+    conceptsMap: Map<string, string>,
+  ): Promise<Movement[]> {
+    const { employeeId, companyId, period, salaryData } = context;
+    const { salary } = salaryData;
+
+    try {
+      const vacationCodes = await getConceptCodes(
+        this.codesConfigService,
+        CONCEPT_IDS_VACATION,
+      );
+
+      const absences =
+        await this.absenteeHistoryRepo.getVacationAbsencesByPeriod(
+          employeeId,
+          period.initialDate,
+          period.endDate,
+        );
+
+      let totalDays = 0;
+      for (const absence of absences) {
+        const fechaInicioLiquidacion =
+          absence.initialAbsencesDate > period.initialDate
+            ? absence.initialAbsencesDate
+            : period.initialDate;
+        const fechaFinLiquidacion =
+          absence.endAbsencesDate < period.endDate
+            ? absence.endAbsencesDate
+            : period.endDate;
+
+        if (fechaInicioLiquidacion <= fechaFinLiquidacion) {
+          totalDays += numberDays(fechaInicioLiquidacion, fechaFinLiquidacion);
+        }
+      }
+
+      const value = Math.round((salary / 30) * totalDays);
+
+      const movement = await this.movementService.create({
+        employee_id: employeeId,
+        quantity: totalDays,
+        value,
+        concept_id: conceptsMap.get(vacationCodes.vacationEnjoyed),
+        period_id: period.id,
+        year: period.year,
+        month: period.month,
+        company_id: companyId,
+      });
+
+      return [movement];
+    } catch (error) {
+      this.logger.error(
+        `Error calculating vacation days enjoyed for employee: ${context.employeeId}`,
+      );
+      throw new Error(
+        `No se pudo calcular los días de vacaciones disfrutadas: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

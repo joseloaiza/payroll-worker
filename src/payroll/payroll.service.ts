@@ -177,20 +177,13 @@ export class PayrollService {
       period.initialDate,
       period.endDate,
     );
-    if (!contractsInperiod) {
+    if (!contractsInperiod || contractsInperiod.length === 0) {
       this.logger.error(`Build Context:Employee ${employeeId} not foud`);
       throw new PayrollValidationError('Empleado no tiene datos de contrato');
     }
 
     const initialContract =
       await this.employeeService.getInitialContract(employeeId);
-
-    const contracts =
-      await this.employeeService.getContractsEmployee(employeeId);
-    if (!contracts) {
-      this.logger.error(`Build Context:Employee ${employeeId} not foud`);
-      throw new PayrollValidationError('Empleado no tiene datos de contrato');
-    }
 
     const periodContracts = contractsInperiod.map((contract) => ({
       initialContractDate: contract.initialContractDate,
@@ -432,6 +425,13 @@ export class PayrollService {
       return;
     }
 
+    const enjoyedMovements =
+      await this.vacationsService.calculateVacationsEnjoyed(
+        context,
+        conceptsMap,
+      );
+    await this.movementService.saveMovements(enjoyedMovements);
+
     const vacationsProvisionsMovements =
       await this.vacationsService.calculateVacationProvision(
         context,
@@ -483,14 +483,11 @@ export class PayrollService {
       ...licenseMappings.map((m) => m.code),
     ];
 
-    const codeIdPairs = await Promise.all(
-      allCodes.map(async (code) => {
-        const codeId = await this.codesConfigService.getCodeById(code);
-        return [code, conceptsMap.get(codeId)] as const;
-      }),
+    const idToCode = await this.codesConfigService.getManyCodesByIds(allCodes);
+    const codeToConceptId = new Map(
+      allCodes.map((id) => [id, conceptsMap.get(idToCode[id])]),
     );
 
-    const codeToConceptId = new Map(codeIdPairs);
     const diseaseMovements = buildMovementData(
       disease,
       diseaseMappings,

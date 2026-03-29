@@ -39,7 +39,7 @@ export const CONCEPT_IDS_VACATION = {
   newBalanceProvisionVacation: '0163',
   previousBalanceVacation: '0164',
   vacationsProvicion: '0165',
-  vacationEnjoyed: '0166',
+  vacationEnjoyed: '0166', //VACATIONS ENJOYED
   compensatedvacations: '0167',
 };
 

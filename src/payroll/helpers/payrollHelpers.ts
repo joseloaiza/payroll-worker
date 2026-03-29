@@ -54,40 +54,6 @@ export function calculateWorkedDays(
   return Math.max(WorkedDays, 0);
 }
 
-// export function calculateWorkedDays(
-//   iniDate: Date,
-//   endDate: Date,
-//   iniPeriod: Date,
-//   endPeriod: Date,
-//   numDaysPeriod: number,
-// ): number {
-//   let start = iniDate;
-//   let end = endDate;
-
-//   // Ensure start and end dates are within iniPeriod and endPeriod
-//   if (isBefore(iniDate, iniPeriod) || isSameDay(iniDate, iniPeriod)) {
-//     start = iniPeriod;
-//   }
-//   if (isAfter(endDate, endPeriod) || isSameDay(endDate, endPeriod)) {
-//     end = endPeriod;
-//   }
-
-//   // Calculate number of days
-//   let workedDays = differenceInDays(end, start) + 1;
-
-//   /// Normalize February (28/29) to 30
-//   if (workedDays === 28 || workedDays === 29) {
-//     workedDays = 30;
-//   }
-
-//   // Normalize full 31-day months to 30
-//   if (numDaysPeriod === 31 && workedDays === 31) {
-//     workedDays = 30;
-//   }
-
-//   return workedDays;
-// }
-
 export function getRealEndDatePeriod(endPeriod: Date): Date {
   const day = endPeriod.getUTCDate();
   const month = endPeriod.getUTCMonth();

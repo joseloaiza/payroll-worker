@@ -147,16 +147,7 @@ export class CodesConfigService implements OnApplicationBootstrap {
     const configs = (await this.getAllCodes()).filter((c) =>
       ids.includes(c.id.toString()),
     );
-    const codesConfigs = Object.fromEntries(
-      configs.map((c) => [c.id.toString(), c.code]),
-    );
-
-    for (const id of ids) {
-      if (!codesConfigs[String(id)])
-        throw new Error(`Code not found for id  ${id}`);
-    }
-
-    return codesConfigs;
+    return Object.fromEntries(configs.map((c) => [c.id.toString(), c.code]));
   }
   /** ✅ Filter items dynamically */
   async filterCodes(
