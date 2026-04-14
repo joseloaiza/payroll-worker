@@ -10,5 +10,6 @@ import { NoveltiesModule } from 'src/novelties/novelties.module';
 @Module({
   imports: [CodesConfigModule, MovementsModule, CompanyModule, NoveltiesModule],
   providers: [UnemploymentService, BonusPaymentService, VacationsService],
+  exports: [UnemploymentService, BonusPaymentService, VacationsService],
 })
 export class ProvisionsModule {}
