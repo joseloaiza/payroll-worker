@@ -161,6 +161,12 @@ export const CODES_CONFIG = {
   unemployedInterestPayed: '0158',
 };
 
+export interface Excess1393Result {
+  movements: Movement[];
+  excess1393: number;
+  totalBaseCree: number;
+}
+
 export const CODES_CONFIG_BONUS_PAYMENT = {
   workedDays: '0145',
   variableBase: '0146',

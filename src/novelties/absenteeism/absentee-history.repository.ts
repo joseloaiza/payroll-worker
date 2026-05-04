@@ -131,6 +131,23 @@ export class AbsenteeHistoryRepository {
     return result ? parseInt(result.total, 10) : 0;
   }
 
+  async getVacationAbsencesByPeriod(
+    employeeId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<AbsenteeHistory[]> {
+    return this.repo
+      .createQueryBuilder('ah')
+      .innerJoinAndSelect('ah.absenteeType', 'at')
+      .where('ah.employee_id = :employeeId', { employeeId })
+      .andWhere('at.code = :code', { code: 'A100' })
+      .andWhere('ah.isActive = true')
+      .andWhere('ah.initialAbsencesDate <= :periodEnd', { periodEnd })
+      .andWhere('ah.endAbsencesDate >= :periodStart', { periodStart })
+      .orderBy('ah.initialAbsencesDate', 'ASC')
+      .getMany();
+  }
+
   async getAbsenteeDaysByReference(
     referenceInhability: string,
     initialAbsencesDate: Date,
