@@ -88,11 +88,12 @@ export class PayrollService {
         period.id,
       );
 
-      await this.coreCalculator.calculate(
+      const { rawSalary } = await this.coreCalculator.calculate(
         context,
         conceptsCompany.conceptMap,
         movementContext,
       );
+      context.rawSalary = rawSalary;
       await this.calculateSocialSecurity(
         context,
         conceptsCompany.conceptMap,
@@ -157,9 +158,14 @@ export class PayrollService {
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
   ) {
-    calculateMovements.addMovements(
-      await this.excess1393Calculator.calculate(context, conceptsMap),
-    );
+    const {
+      movements: excess1393Movements,
+      excess1393,
+      totalBaseCree,
+    } = await this.excess1393Calculator.calculate(context, conceptsMap);
+    context.excess1393 = excess1393;
+    context.totalBaseCree = totalBaseCree;
+    calculateMovements.addMovements(excess1393Movements);
 
     const { movements, IBCSSP } =
       await this.socialSecurityService.calculateSocialSecurityIBC(

@@ -3,11 +3,13 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { MovementsService } from '../../movements/movements.service';
 import { CodesConfigService } from '../../config/codes-config/codes-config.service';
 import { PayrollConstantsService } from '../../config/payroll-constants/payroll-constants.service';
-import { PayrollContext } from '../interfaces/payroll.interfaces';
+import {
+  Excess1393Result,
+  PayrollContext,
+} from '../interfaces/payroll.interfaces';
 import { PayrollCalculationError } from '../exeptions/payroll.exceptions';
 import { getConceptCodes } from 'src/utils/concepts.utils';
 import { CONCEPT_IDS_EXCESS1393 } from '../../constants/constants';
-import { Movement } from '../../movements/entities/movement.entity';
 
 @Injectable()
 export class Excess1393CalculatorService {
@@ -22,7 +24,7 @@ export class Excess1393CalculatorService {
   async calculate(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<Excess1393Result> {
     this.logger.log(`Calculating 1393 for employee ${context.employeeId}`);
     const { employeeId, period, companyId } = context;
 
@@ -102,10 +104,7 @@ export class Excess1393CalculatorService {
         conceptsMap,
       );
 
-      context.excess1393 = excess1393;
-      context.totalBaseCree = totalBaseCree;
-
-      return successes;
+      return { movements: successes, excess1393, totalBaseCree };
     } catch (error) {
       this.logger.error(
         `Error calculating excess 1393 for employee: ${employeeId}`,

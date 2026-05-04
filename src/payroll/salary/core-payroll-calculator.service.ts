@@ -37,11 +37,12 @@ export class CorePayrollCalculatorService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-  ): Promise<void> {
+  ): Promise<{ rawSalary: number }> {
     this.logger.log(`Calculating absentees for employee ${context.employeeId}`);
-    calculateMovements.addMovements(
-      await this.calculateAbsentees(context, conceptsMap),
-    );
+    const { movements: absenteeMovements, totalAbseenteDays } =
+      await this.calculateAbsentees(context, conceptsMap);
+    calculateMovements.addMovements(absenteeMovements);
+    context.totalAbseenteDays = totalAbseenteDays;
 
     this.logger.log(
       `Calculating Recurrents for employee ${context.employeeId}`,
@@ -49,19 +50,21 @@ export class CorePayrollCalculatorService {
     calculateMovements.addMovements(await this.calculateRecurrents(context));
 
     this.logger.log(`Calculating Salary for employee ${context.employeeId}`);
-    calculateMovements.addMovements(
-      await this.calculateSalary(context, conceptsMap),
-    );
+    const { movements: salaryMovements, rawSalary } =
+      await this.calculateSalary(context, conceptsMap);
+    calculateMovements.addMovements(salaryMovements);
 
     const mutableMovements = [...calculateMovements.movements];
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
+
+    return { rawSalary };
   }
 
   private async calculateAbsentees(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<{ movements: Movement[]; totalAbseenteDays: number }> {
     const { companyId, employeeId, period } = context;
 
     let disease, license, totalAbsenteeDays;
@@ -139,8 +142,7 @@ export class CorePayrollCalculatorService {
       ),
     );
 
-    context.totalAbseenteDays = totalAbsenteeDays;
-    return movements;
+    return { movements, totalAbseenteDays: totalAbsenteeDays };
   }
 
   private async calculateRecurrents(
@@ -168,7 +170,7 @@ export class CorePayrollCalculatorService {
   private async calculateSalary(
     context: PayrollContext,
     conceptsMap: Map<string, string>,
-  ): Promise<Movement[]> {
+  ): Promise<{ movements: Movement[]; rawSalary: number }> {
     const {
       employeeId,
       companyId,
@@ -237,8 +239,7 @@ export class CorePayrollCalculatorService {
         conceptsMap,
       );
 
-      context.rawSalary = valueSalary;
-      return successes;
+      return { movements: successes, rawSalary: valueSalary };
     } catch (error) {
       this.logger.error(
         `Error calculating salary for employee: ${employeeId}`,

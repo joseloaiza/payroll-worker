@@ -97,4 +97,6 @@ export class EmployeeFullView {
   subsidiary_id: string;
   @ViewColumn()
   salaryType_id: string;
+  @ViewColumn()
+  companyEconomicActivityRisk_id: string;
 }
