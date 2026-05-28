@@ -22,12 +22,6 @@ import { CorePayrollCalculatorService } from './salary/core-payroll-calculator.s
 import { TransportCalculatorService } from './transport/transport-calculator.service';
 import { Excess1393CalculatorService } from './excess1393/excess1393-calculator.service';
 import { CodesConfigService } from './../config/codes-config/codes-config.service';
-import { LiquidationRepository } from 'src/liquidation/liquidation.repository';
-
-interface CalculateOptions {
-  type?: string;
-  causeLiquidationId?: string;
-}
 
 @Injectable()
 export class PayrollService {
@@ -44,17 +38,11 @@ export class PayrollService {
     private readonly vacationsService: VacationsService,
     private readonly snapshotService: SnapshotService,
     private readonly codesConfigService: CodesConfigService,
-    private readonly liquidationRepository: LiquidationRepository,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
 
-  async calculate(
-    employeeId: string,
-    companyId: string,
-    rawPeriod: any,
-    options?: CalculateOptions,
-  ) {
+  async calculate(employeeId: string, companyId: string, rawPeriod: any) {
     try {
       const initialDateObj = convertDateToUTC(rawPeriod.initialDate);
       const endDateObj = convertDateToUTC(rawPeriod.endDate);
@@ -78,21 +66,6 @@ export class PayrollService {
       );
 
       const conceptsCompany = await this.conceptService.getConcepts(companyId);
-
-      let liquidationId: string | undefined;
-      if (options?.type === 'liquidation') {
-        const header = this.liquidationRepository.create({
-          employee_id: employeeId,
-          company_id: companyId,
-          period_id: period.id,
-          termination_date: period.endDate,
-          cause_liquidation_id: options.causeLiquidationId,
-          type: 'liquidation',
-        });
-        const saved = await this.liquidationRepository.save(header);
-        liquidationId = saved.id;
-      }
-
       const movementContext = new PayrollCalculationContext(
         employeeId,
         companyId,
@@ -119,32 +92,27 @@ export class PayrollService {
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       context.rawSalary = rawSalary;
       await this.calculateSocialSecurity(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.transportCalculator.calculate(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.calculateProvisions(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.calculateEnjoyedVacations(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
     } catch (error) {
       const errorMessage =
@@ -189,7 +157,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     const {
       movements: excess1393Movements,
@@ -238,8 +205,6 @@ export class PayrollService {
     );
 
     const mutableMovements = [...calculateMovements.movements];
-    if (liquidationId)
-      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }
@@ -248,7 +213,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     this.logger.log(
       `Calculating provisions for employee ${context.employeeId}`,
@@ -296,8 +260,6 @@ export class PayrollService {
     calculateMovements.addMovements(vacationsProvisionsMovements);
 
     const mutableMovements = [...(calculateMovements.movements ?? [])];
-    if (liquidationId)
-      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }
@@ -306,7 +268,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     this.logger.log(
       `Calculating vacation provisions for employee ${context.employeeId}`,
@@ -327,8 +288,6 @@ export class PayrollService {
         context,
         conceptsMap,
       );
-    if (liquidationId)
-      enjoyedMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(enjoyedMovements);
 
     calculateMovements.clearMovements();

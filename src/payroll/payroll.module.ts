@@ -36,6 +36,8 @@ import { PayrollContextBuilderService } from './context-builder/payroll-context-
 import { CorePayrollCalculatorService } from './salary/core-payroll-calculator.service';
 import { TransportCalculatorService } from './transport/transport-calculator.service';
 import { Excess1393CalculatorService } from './excess1393/excess1393-calculator.service';
+import { Liquidation } from 'src/liquidation/entities/liquidation.entity';
+import { LiquidationRepository } from 'src/liquidation/liquidation.repository';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { Excess1393CalculatorService } from './excess1393/excess1393-calculator.
       PayrollEmployeeSnapshot,
       PayrollEmployeeSnapshotInput,
       PayrollInputCatalog,
+      Liquidation,
     ]),
     EmployeeModule,
     MovementsModule,
@@ -78,6 +81,7 @@ import { Excess1393CalculatorService } from './excess1393/excess1393-calculator.
     ConceptRepository,
     CompanyRepository,
     PayrollJobRepository,
+    LiquidationRepository,
   ],
   exports: [SnapshotService],
 })

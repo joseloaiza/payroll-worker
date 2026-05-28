@@ -29,7 +29,7 @@ export class PayrollJobRepository {
   async findOne(id: string): Promise<PayrollJob> {
     return await this.repo.findOne({
       where: { id: id },
-      select: ['id', 'companyId', 'periodData'], // Only fetch what you need
+      select: ['id', 'companyId', 'periodData', 'type', 'cause_liquidation_id'],
     });
   }
 

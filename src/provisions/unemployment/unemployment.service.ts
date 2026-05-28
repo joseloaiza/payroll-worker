@@ -7,11 +7,14 @@ import {
   CONCEPT_IDS_UNEMPLOYMENT,
   CONCEPT_IDS_UNEMPLOYMENT_INTEREST,
 } from './../../constants/constants';
-import { MovementData } from './../../utils/interfaces/interfaces';
 import { Movement } from 'src/movements/entities/movement.entity';
 import { PayrollContext } from 'src/payroll/interfaces/payroll.interfaces';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { differenceInDays360 } from 'src/utils/date-utilities';
+import {
+  UnemploymentCalculationData,
+  InterestUnemploymentCalculationData,
+} from 'src/liquidation/interfaces/liquidation.interfaces';
 
 @Injectable()
 export class UnemploymentService {
@@ -27,80 +30,151 @@ export class UnemploymentService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
   ): Promise<Movement[]> {
-    const { employeeId, companyId, period, contractData, salaryData } = context;
+    const { employeeId, companyId, period } = context;
+    try {
+      const data = await this.calculateUnemploymentData(
+        context,
+        context.period.endDate,
+      );
+      return Promise.all(
+        data.items.map((item) =>
+          this.movementService.create({
+            employee_id: employeeId,
+            quantity: item.days,
+            value: item.value,
+            concept_id: conceptsMap.get(item.code),
+            period_id: period.id,
+            year: period.year,
+            month: period.month,
+            company_id: companyId,
+          }),
+        ),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Error calculating unemployment provision for employee: ${context.employeeId}`,
+      );
+      throw new Error(`No se pudo calcular las cesantias : ${message}`);
+    }
+  }
+
+  async calculateInterestUnemploymentProvision(
+    context: PayrollContext,
+    conceptMap: Map<string, string>,
+    calculaeUnpaidValue: number,
+  ): Promise<Movement[]> {
+    const { employeeId, companyId, period } = context;
+    try {
+      const data = await this.calculateInterestUnemploymentData(
+        context,
+        context.period.endDate,
+        calculaeUnpaidValue,
+      );
+      return Promise.all(
+        data.items.map((item) =>
+          this.movementService.create({
+            employee_id: employeeId,
+            quantity: item.days,
+            value: item.value,
+            concept_id: conceptMap.get(item.code),
+            period_id: period.id,
+            year: period.year,
+            month: period.month,
+            company_id: companyId,
+          }),
+        ),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Error calculating unemployment rate provision for employee: ${context.employeeId}`,
+      );
+      throw new Error(
+        `No se pudo calcular los intereses a la cesantias : ${message}`,
+      );
+    }
+  }
+
+  async calculateUnemploymentData(
+    context: PayrollContext,
+    cutoffDate: Date,
+  ): Promise<UnemploymentCalculationData> {
+    const { employeeId, period, contractData, salaryData } = context;
     const { initialContract, regimeCode } = contractData;
     const { salary } = salaryData;
+
+    const cutoffYear = cutoffDate.getUTCFullYear();
+    const cutoffMonth = cutoffDate.getUTCMonth() + 1;
 
     const unemploymentCodes = await getConceptCodes(
       this.codesConfigService,
       CONCEPT_IDS_UNEMPLOYMENT,
     );
 
-    try {
-      const [
-        workedDays,
-        baseVariableConcepts,
-        alreadyPaidDays,
-        previousBalance,
-        payedDays,
-      ] = await Promise.all([
-        // worked days save in concept /133
-        this.calculateWorkedDays(
-          employeeId,
-          period.month,
-          period.year,
-          period.endDate,
-          initialContract.initialContractDate,
-          regimeCode,
-          false,
-        ),
-        this.calculateBaseConcepts(employeeId, period.year, period.month),
-        // calculate this is the concept M033 in movements actual year
-        this.movementService.getSumMovementsValues(
-          employeeId,
-          period.year,
-          undefined,
-          {
-            ['code']: 'M033',
-          },
-        ),
-        this.getUnemploymentPreviousPeriod(
-          employeeId,
-          period.previousPeriodYear,
-          period.previousPeriodNumber,
-          unemploymentCodes.newValue,
-        ),
-        this.movementService.getMovementQuantityAndValue(
-          unemploymentCodes.previousValue,
-          employeeId,
-          period.year,
-          period.number,
-        ),
-      ]);
-      const baseProvision = baseVariableConcepts + salary;
-      const totalUnemploymentDays = this.calculateUnpaidDays(
-        workedDays,
-        alreadyPaidDays,
+    const [
+      workedDays,
+      baseVariableConcepts,
+      alreadyPaidDays,
+      previousBalance,
+      payedDays,
+    ] = await Promise.all([
+      this.calculateWorkedDays(
+        employeeId,
+        cutoffMonth,
+        cutoffYear,
+        cutoffDate,
+        initialContract.initialContractDate,
+        regimeCode,
+        false,
+      ),
+      this.calculateBaseConcepts(employeeId, cutoffYear, cutoffMonth),
+      this.movementService.getSumMovementsValues(
+        employeeId,
+        cutoffYear,
+        undefined,
+        {
+          ['code']: 'M033',
+        },
+      ),
+      this.getUnemploymentPreviousPeriod(
+        employeeId,
+        period.previousPeriodYear,
+        period.previousPeriodNumber,
+        unemploymentCodes.newValue,
+      ),
+      this.movementService.getMovementQuantityAndValue(
+        unemploymentCodes.previousValue,
+        employeeId,
+        cutoffYear,
+        period.number,
+      ),
+    ]);
+
+    const baseProvision = baseVariableConcepts + salary;
+    const totalUnemploymentDays = this.calculateUnpaidDays(
+      workedDays,
+      alreadyPaidDays,
+    );
+    const unpaidDays = totalUnemploymentDays - alreadyPaidDays;
+    const unpaidValue = unpaidDays * (baseProvision / 30);
+
+    const { totalQuantity: previousDays, totalValue: previousValue } =
+      previousBalance;
+    const { quantity: unemployedPayedDays, value: unemployedPayedValue } =
+      payedDays;
+    const { days: provisionDays, value: provisionValue } =
+      this.calculateProvision(
+        unpaidDays,
+        previousDays,
+        unemployedPayedDays,
+        unpaidValue,
+        previousValue,
+        unemployedPayedValue,
       );
-      const unpaidDays = totalUnemploymentDays - alreadyPaidDays;
-      const unpaidValue = unpaidDays * (baseProvision / 30); //save in cocep /136 value
 
-      const { totalQuantity: previousDays, totalValue: previousValue } =
-        previousBalance;
-      const { quantity: unemployedPayedDays, value: unemployedPayedValue } =
-        payedDays;
-      const { days: provisionDays, value: provisionValue } =
-        this.calculateProvision(
-          unpaidDays,
-          previousDays,
-          unemployedPayedDays,
-          unpaidValue, //newValue
-          previousValue, // previusValue
-          unemployedPayedValue, // value payed
-          //baseVariableConcepts,
-        );
-
-      const movementData: MovementData[] = [
+    return {
+      items: [
         { days: workedDays, value: 0, code: unemploymentCodes.workedDays },
         {
           days: 0,
@@ -124,113 +198,90 @@ export class UnemploymentService {
           value: provisionValue,
           code: unemploymentCodes.provision,
         },
-      ];
-
-      const movements = await Promise.all(
-        movementData.map((m) =>
-          this.movementService.create({
-            employee_id: employeeId,
-            quantity: m.days,
-            value: m.value,
-            concept_id: conceptsMap.get(m.code),
-            period_id: period.id,
-            year: period.year,
-            month: period.month,
-            company_id: companyId,
-          }),
-        ),
-      );
-
-      return movements;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Error calculating unemployment provision for employee: ${context.employeeId}`,
-      );
-      throw new Error(`No se pudo calcular las cesantias : ${message}`);
-    }
+      ],
+      unpaidValue,
+    };
   }
 
-  async calculateInterestUnemploymentProvision(
+  async calculateInterestUnemploymentData(
     context: PayrollContext,
-    conceptMap: Map<string, string>,
-    calculaeUnpaidValue: number,
-  ): Promise<Movement[]> {
-    const { employeeId, companyId, period, contractData } = context;
+    cutoffDate: Date,
+    unpaidValue: number,
+  ): Promise<InterestUnemploymentCalculationData> {
+    const { employeeId, period, contractData } = context;
     const { initialContract, regimeCode } = contractData;
+
+    const cutoffYear = cutoffDate.getUTCFullYear();
+    const cutoffMonth = cutoffDate.getUTCMonth() + 1;
 
     const interestUnemploymentCodes = await getConceptCodes(
       this.codesConfigService,
       CONCEPT_IDS_UNEMPLOYMENT_INTEREST,
     );
 
-    try {
-      const [
-        workedDaysInterest,
-        interestPaidDays,
-        previusMonthInterest,
-        InterestPayedDays,
-      ] = await Promise.all([
-        this.calculateWorkedDays(
-          employeeId,
-          period.month,
-          period.year,
-          period.endDate,
-          initialContract.initialContractDate,
-          regimeCode,
-          true,
-        ),
-        this.movementService.getSumMovementsValues(
-          employeeId,
-          period.year,
-          undefined,
-          {
-            ['code']: 'M034',
-          },
-        ),
-        this.getUnemploymentPreviousPeriod(
-          employeeId,
-          period.previousPeriodYear,
-          period.previousPeriodNumber,
-          interestUnemploymentCodes.interestNew,
-        ),
-        this.movementService.getMovementQuantityAndValue(
-          interestUnemploymentCodes.unemployedInterestPayed,
-          employeeId,
-          period.year,
-          period.number,
-        ),
-      ]);
+    const [
+      workedDaysInterest,
+      interestPaidDays,
+      previusMonthInterest,
+      InterestPayedDays,
+    ] = await Promise.all([
+      this.calculateWorkedDays(
+        employeeId,
+        cutoffMonth,
+        cutoffYear,
+        cutoffDate,
+        initialContract.initialContractDate,
+        regimeCode,
+        true,
+      ),
+      this.movementService.getSumMovementsValues(
+        employeeId,
+        cutoffYear,
+        undefined,
+        {
+          ['code']: 'M034',
+        },
+      ),
+      this.getUnemploymentPreviousPeriod(
+        employeeId,
+        period.previousPeriodYear,
+        period.previousPeriodNumber,
+        interestUnemploymentCodes.interestNew,
+      ),
+      this.movementService.getMovementQuantityAndValue(
+        interestUnemploymentCodes.unemployedInterestPayed,
+        employeeId,
+        cutoffYear,
+        period.number,
+      ),
+    ]);
 
-      const interestBaseValue = calculaeUnpaidValue;
-      //calculate new balance unemployed interest
-      const interestFactorDays =
-        await this.payrollConstantsService.getConstantValue(
-          interestUnemploymentCodes.interestFactor,
-        );
+    const interestBaseValue = unpaidValue;
+    const interestFactorDays =
+      await this.payrollConstantsService.getConstantValue(
+        interestUnemploymentCodes.interestFactor,
+      );
 
-      const totalInterestDays = (workedDaysInterest * interestFactorDays) / 360;
-      const interestDays = totalInterestDays - interestPaidDays; // save in concept /136 quantity
-      const interestValue = interestDays * (interestBaseValue / 30); //save in cocep /136 value
+    const totalInterestDays = (workedDaysInterest * interestFactorDays) / 360;
+    const interestDays = totalInterestDays - interestPaidDays;
+    const interestValue = interestDays * (interestBaseValue / 30);
 
-      //calcultate before month for interest
-      const {
-        totalQuantity: previousInterestDays,
-        totalValue: previousInterestValue,
-      } = previusMonthInterest;
+    const {
+      totalQuantity: previousInterestDays,
+      totalValue: previousInterestValue,
+    } = previusMonthInterest;
+    const {
+      quantity: unemployedInterestPayedDays,
+      value: unemployedInterestPayedValue,
+    } = InterestPayedDays;
 
-      const {
-        quantity: unemployedInterestPayedDays,
-        value: unemployedInterestPayedValue,
-      } = InterestPayedDays;
+    const provisionInterestDays =
+      interestDays + unemployedInterestPayedDays - previousInterestDays;
+    const provisionInterestValue =
+      interestValue + unemployedInterestPayedValue - previousInterestValue;
 
-      const provisionInterestDays =
-        interestDays + unemployedInterestPayedDays - previousInterestDays;
-      const provisionInterestValue =
-        interestValue + unemployedInterestPayedValue - previousInterestValue;
-      //provisionInterestDays * (interestBaseValue / 30);
-
-      const movementData: MovementData[] = [
+    return {
+      items: [
         {
           days: interestDays,
           value: 0,
@@ -256,33 +307,8 @@ export class UnemploymentService {
           value: provisionInterestValue,
           code: interestUnemploymentCodes.interestProvision,
         },
-      ];
-
-      const movements = await Promise.all(
-        movementData.map((m) =>
-          this.movementService.create({
-            employee_id: employeeId,
-            quantity: m.days,
-            value: m.value,
-            concept_id: conceptMap.get(m.code),
-            period_id: period.id,
-            year: period.year,
-            month: period.month,
-            company_id: companyId,
-          }),
-        ),
-      );
-
-      return movements;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Error calculating unemployment rate provision for employee: ${context.employeeId}`,
-      );
-      throw new Error(
-        `No se pudo calcular los intereses a la cesantias : ${message}`,
-      );
-    }
+      ],
+    };
   }
 
   private calculateUnpaidDays(

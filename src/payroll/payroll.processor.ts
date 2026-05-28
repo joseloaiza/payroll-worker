@@ -47,6 +47,7 @@ export class PayrollProcessor implements OnModuleInit {
         employeeId,
         job.companyId,
         job.periodData,
+        { type: job.type, causeLiquidationId: job.cause_liquidation_id },
       );
       // Update progress directly in database
       await this.payrollJobRepository.updateJobProgress(
@@ -54,46 +55,18 @@ export class PayrollProcessor implements OnModuleInit {
         employeeId,
         'completed',
       );
-
-      // // Notify progress
-      // await this.client.emit(
-      //   'payroll_status_updates',
-      //   {
-      //     jobId,
-      //     employeeId: data.employeeId,
-      //     status: 'completed',
-      //   },
-      //   process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
-      // );
-      // this.logger.log(`status for job ${jobId} was emited.`);
-
-      //await this.jobStatusService.setStatus(job.jobId, 'completed', result);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `❌ Payroll calculation failed for employee ${employeeId}: ${err.message}`,
+        `❌ Payroll calculation failed for employee ${employeeId}: ${message}`,
       );
+
       await this.payrollJobRepository.updateJobProgress(
         jobId,
         employeeId,
         'failed',
-        err.message,
+        message,
       );
-      // try {
-      //   await this.client.emit(
-      //     'payroll_status_updates',
-      //     {
-      //       jobId,
-      //       employeeId,
-      //       status: 'failed',
-      //       error: err.message,
-      //     },
-      //     process.env.SERVICEBUS_PAYROLL_STATUS_QUEUE,
-      //   );
-      // } catch (emitError) {
-      //   this.logger.error(
-      //     `💥 Failed to send failure status: ${emitError.message}`,
-      //   );
-      // }
       throw err;
     }
   }

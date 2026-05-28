@@ -37,6 +37,7 @@ export class CorePayrollCalculatorService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
+    liquidationId?: string,
   ): Promise<{ rawSalary: number }> {
     this.logger.log(`Calculating absentees for employee ${context.employeeId}`);
     const { movements: absenteeMovements, totalAbseenteDays } =
@@ -55,6 +56,8 @@ export class CorePayrollCalculatorService {
     calculateMovements.addMovements(salaryMovements);
 
     const mutableMovements = [...calculateMovements.movements];
+    if (liquidationId)
+      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
 
