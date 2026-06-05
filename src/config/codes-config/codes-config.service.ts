@@ -37,7 +37,9 @@ export class CodesConfigService implements OnApplicationBootstrap {
       await this.loadConfig();
       this.logger.log('Codes config loaded successfully');
     } catch (error) {
-      this.logger.error('Failed to load codes config ', error.stack);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error('Failed to load codes config ', errorMessage);
     }
   }
 

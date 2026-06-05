@@ -295,9 +295,16 @@ export class PayrollService {
     calculateMovements.addMovements(bonusPaymentProvisions);
     calculateMovements.addMovements(vacationsProvisionsMovements);
 
-    const mutableMovements = [...(calculateMovements.movements ?? [])];
-    if (liquidationId)
+    let mutableMovements = [...(calculateMovements.movements ?? [])];
+    if (liquidationId) {
+      // Apply liquidation concept mapping
+      mutableMovements = this.applyLiquidationConcepts(
+        mutableMovements,
+        conceptsMap,
+      );
       mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
+    }
+
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }
@@ -333,4 +340,34 @@ export class PayrollService {
 
     calculateMovements.clearMovements();
   }
+
+  private applyLiquidationConcepts(
+    movements: Movement[],
+    conceptsMap: Map<string, string>,
+  ): Movement[] {
+    // Reverse conceptsMap to lookup code by concept_id
+    const reverseConceptsMap = new Map<string, string>(
+      [...conceptsMap.entries()].map(([code, id]) => [id, code]),
+    );
+
+    return movements.map((movement) => {
+      const code = reverseConceptsMap.get(movement.concept_id);
+      const liquidationCode = this.LIQUIDATION_CONCEPT_MAP[code];
+
+      if (liquidationCode) {
+        const newConceptId = conceptsMap.get(liquidationCode);
+        if (newConceptId) {
+          return { ...movement, concept_id: newConceptId };
+        }
+      }
+      return movement;
+    });
+  }
+
+  private readonly LIQUIDATION_CONCEPT_MAP: Record<string, string> = {
+    '/136': 'M037', // Nuevo Saldo Cesantias → Cesantias Definitivas
+    '/140': 'M038', // Nuevo Saldo Int Cesantias → Int Cesantias Definitivas
+    '/129': 'M032', // Nuevo Saldo Prima Legal → Prima Legal de Servicio
+    '/144': 'M036', // Nuevo Saldo Vacaciones → Vacaciones compensadas
+  };
 }

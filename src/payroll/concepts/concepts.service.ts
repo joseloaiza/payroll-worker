@@ -49,7 +49,10 @@ export class ConceptsService {
       await this.cacheManager.set(cacheKey, cacheData);
       return { concepts, conceptMap };
     } catch (error) {
-      this.logger.error('Failed to get company concepts ', error.stack);
+      this.logger.error(
+        'Failed to get company concepts',
+        (error as Error).stack,
+      );
       throw error;
     }
   }
