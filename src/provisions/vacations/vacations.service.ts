@@ -4,13 +4,13 @@ import { CodesConfigService } from './../../config/codes-config/codes-config.ser
 import { PayrollConstantsService } from './../../config/payroll-constants/payroll-constants.service';
 import { getConceptCodes } from './../../utils/concepts.utils';
 import { CONCEPT_IDS_VACATION } from './../../constants/constants';
-import { MovementData } from './../../utils/interfaces/interfaces';
 import { differenceInDays, subYears } from 'date-fns';
 import { Movement } from 'src/movements/entities/movement.entity';
 import { PayrollContext } from 'src/payroll/interfaces/payroll.interfaces';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AbsenteeHistoryRepository } from './../../novelties/absenteeism/absentee-history.repository';
 import { numberDays } from './../../utils/date-utilities';
+import { VacationCalculationData } from 'src/liquidation/interfaces/liquidation.interfaces';
 
 @Injectable()
 export class VacationsService {
@@ -27,113 +27,134 @@ export class VacationsService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
   ): Promise<Movement[]> {
-    const {
-      employeeId,
-      companyId,
-      period,
-      contractData,
-      salaryData,
-      vacationHistory,
-    } = context;
+    const { employeeId, companyId, period } = context;
+    try {
+      const data = await this.calculateVacationData(
+        context,
+        context.period.endDate,
+      );
+      return Promise.all(
+        data.items.map((item) =>
+          this.movementService.create({
+            employee_id: employeeId,
+            quantity: item.days,
+            value: item.value,
+            concept_id: conceptsMap.get(item.code),
+            period_id: period.id,
+            year: period.year,
+            month: period.month,
+            company_id: companyId,
+          }),
+        ),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error calculating vacations provision for employee: ${context.employeeId}`,
+      );
+      throw new Error(
+        `No se pudo calcular la provisión de las vacaciones : ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  async calculateVacationData(
+    context: PayrollContext,
+    cutoffDate: Date,
+  ): Promise<VacationCalculationData> {
+    const { employeeId, period, contractData, salaryData, vacationHistory } =
+      context;
     const { initialContract } = contractData;
-    const { year, month } = period;
     const { salary } = salaryData;
 
-    try {
-      const vacationCodes = await getConceptCodes(
-        this.codesConfigService,
-        CONCEPT_IDS_VACATION,
+    const cutoffYear = cutoffDate.getUTCFullYear();
+    const cutoffMonth = cutoffDate.getUTCMonth() + 1;
+
+    const vacationCodes = await getConceptCodes(
+      this.codesConfigService,
+      CONCEPT_IDS_VACATION,
+    );
+
+    const { totalQuantity: daysaffect } =
+      await this.movementService.getMovementsAffectingAntiquity(
+        cutoffMonth,
+        cutoffYear,
+        employeeId,
       );
 
-      //get the days that affect antiquity
-      const { totalQuantity: daysaffect } =
-        await this.movementService.getMovementsAffectingAntiquity(
-          month,
-          year,
-          employeeId,
-        );
+    const workedVacationDays =
+      differenceInDays(cutoffDate, initialContract.initialContractDate) +
+      1 +
+      daysaffect;
 
-      const workedVacationDays =
-        differenceInDays(period.endDate, initialContract.initialContractDate) +
-        1 +
-        daysaffect;
+    let averageInitDate: Date;
+    if (workedVacationDays >= 360) averageInitDate = subYears(cutoffDate, 1);
+    else averageInitDate = initialContract.initialContractDate;
 
-      let averageInitDate: Date;
-      if (workedVacationDays >= 360)
-        averageInitDate = subYears(period.endDate, 1);
-      else averageInitDate = initialContract.initialContractDate;
+    const [
+      variablePartProvision,
+      sumVacationsTaken,
+      sumCompensetedVacation,
+      newVacationBalancePreviousPeriod,
+      VacationsTaken,
+      CompensetedVacation,
+    ] = await Promise.all([
+      this.movementService.getSumMovementsValuesBetweenDates(
+        employeeId,
+        averageInitDate,
+        cutoffDate,
+        { ['code']: '/148' },
+      ),
+      this.movementService.getSumMovementsQuantitiesBetweenDates(
+        employeeId,
+        initialContract.initialContractDate,
+        cutoffDate,
+        { ['code']: 'M035' },
+      ),
+      this.movementService.getSumMovementsQuantitiesBetweenDates(
+        employeeId,
+        initialContract.initialContractDate,
+        cutoffDate,
+        { ['code']: 'M036' },
+      ),
+      this.movementService.getMovementQuantityAndValue(
+        vacationCodes.newBalanceProvisionVacation,
+        employeeId,
+        period.previousPeriodYear,
+        period.previousPeriodNumber,
+      ),
+      this.movementService.getMovementQuantityAndValue(
+        vacationCodes.vacationEnjoyed,
+        employeeId,
+        cutoffYear,
+        period.number,
+      ),
+      this.movementService.getMovementQuantityAndValue(
+        vacationCodes.compensatedvacations,
+        employeeId,
+        cutoffYear,
+        period.number,
+      ),
+    ]);
 
-      const [
-        variablePartProvision,
-        sumVacationsTaken,
-        sumCompensetedVacation,
-        newVacationBalancePreviousPeriod,
-        VacationsTaken,
-        CompensetedVacation,
-      ] = await Promise.all([
-        this.movementService.getSumMovementsValuesBetweenDates(
-          employeeId,
-          averageInitDate,
-          period.endDate,
-          {
-            ['code']: '/148',
-          },
-        ),
-        this.movementService.getSumMovementsQuantitiesBetweenDates(
-          employeeId,
-          initialContract.initialContractDate,
-          period.endDate,
-          {
-            ['code']: 'M035',
-          },
-        ),
-        this.movementService.getSumMovementsQuantitiesBetweenDates(
-          employeeId,
-          initialContract.initialContractDate,
-          period.endDate,
-          {
-            ['code']: 'M036',
-          },
-        ),
-        this.movementService.getMovementQuantityAndValue(
-          vacationCodes.newBalanceProvisionVacation,
-          employeeId,
-          period.previousPeriodYear,
-          period.previousPeriodNumber,
-        ),
-        this.movementService.getMovementQuantityAndValue(
-          vacationCodes.vacationEnjoyed,
-          employeeId,
-          period.year,
-          period.number,
-        ),
-        this.movementService.getMovementQuantityAndValue(
-          vacationCodes.compensatedvacations,
-          employeeId,
-          period.year,
-          period.number,
-        ),
-      ]);
+    const baseProvisionVariablePart = (variablePartProvision / 360) * 30;
+    const vacationsPayDays =
+      sumVacationsTaken + sumCompensetedVacation + vacationHistory;
+    const newVacationBalanceDays =
+      (workedVacationDays * 15) / 360 - vacationsPayDays;
+    const newVacationBalanceValue =
+      newVacationBalanceDays * ((baseProvisionVariablePart + salary) / 30);
 
-      const baseProvisionVariablePart = (variablePartProvision / 360) * 30;
-      const vacationsPayDays =
-        sumVacationsTaken + sumCompensetedVacation + vacationHistory;
+    const vacationsDaysPayed =
+      VacationsTaken.quantity + CompensetedVacation.quantity;
+    const provisionVacationsDays =
+      newVacationBalanceDays -
+      vacationsDaysPayed -
+      newVacationBalancePreviousPeriod.quantity;
+    const provisionVacationsValue =
+      provisionVacationsDays * ((baseProvisionVariablePart + salary) / 30);
 
-      const newVacationBalanceDays =
-        (workedVacationDays * 15) / 360 - vacationsPayDays;
-
-      const newVacationBalanceValue =
-        newVacationBalanceDays * ((baseProvisionVariablePart + salary) / 30);
-
-      const vacationsDaysPayed =
-        VacationsTaken.quantity + CompensetedVacation.quantity;
-      const provisionVacationsDays =
-        newVacationBalanceDays -
-        vacationsDaysPayed -
-        newVacationBalancePreviousPeriod.quantity;
-      const provisionVacationsValue =
-        provisionVacationsDays * ((baseProvisionVariablePart + salary) / 30);
-      const movementData: MovementData[] = [
+    return {
+      items: [
         {
           days: workedVacationDays,
           value: 0,
@@ -169,32 +190,8 @@ export class VacationsService {
           value: provisionVacationsValue,
           code: vacationCodes.vacationsProvicion,
         },
-      ];
-
-      const movements = await Promise.all(
-        movementData.map((m) =>
-          this.movementService.create({
-            employee_id: employeeId,
-            quantity: m.days,
-            value: m.value,
-            concept_id: conceptsMap.get(m.code),
-            period_id: period.id,
-            year: period.year,
-            month: period.month,
-            company_id: companyId,
-          }),
-        ),
-      );
-
-      return movements;
-    } catch (error) {
-      this.logger.error(
-        `Error calculating vacations provision for employee: ${context.employeeId}`,
-      );
-      throw new Error(
-        `No se pudo calcular la provisión de las vacaciones : ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+      ],
+    };
   }
 
   async calculateVacationsEnjoyed(

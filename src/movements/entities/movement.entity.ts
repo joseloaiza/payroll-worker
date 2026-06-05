@@ -3,6 +3,7 @@ import { AbstractEntity } from './../../database/abstract.entity';
 import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Period } from 'src/payroll/entities/period.entity';
 import { Employee } from 'src/employee/entities/employee.entity';
+import { Liquidation } from 'src/liquidation/entities/liquidation.entity';
 
 @Entity('movement')
 export class Movement extends AbstractEntity {
@@ -42,4 +43,11 @@ export class Movement extends AbstractEntity {
   @ManyToOne(() => Employee)
   @JoinColumn({ name: 'employee_id' })
   employee: Employee;
+
+  @Column({ nullable: true })
+  liquidation_id?: string;
+
+  @ManyToOne(() => Liquidation, { nullable: true })
+  @JoinColumn({ name: 'liquidation_id' })
+  liquidation?: Liquidation;
 }

@@ -22,12 +22,6 @@ import { CorePayrollCalculatorService } from './salary/core-payroll-calculator.s
 import { TransportCalculatorService } from './transport/transport-calculator.service';
 import { Excess1393CalculatorService } from './excess1393/excess1393-calculator.service';
 import { CodesConfigService } from './../config/codes-config/codes-config.service';
-import { LiquidationRepository } from 'src/liquidation/liquidation.repository';
-
-interface CalculateOptions {
-  type?: string;
-  causeLiquidationId?: string;
-}
 
 @Injectable()
 export class PayrollService {
@@ -44,17 +38,11 @@ export class PayrollService {
     private readonly vacationsService: VacationsService,
     private readonly snapshotService: SnapshotService,
     private readonly codesConfigService: CodesConfigService,
-    private readonly liquidationRepository: LiquidationRepository,
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
     private readonly logger: LoggerService,
   ) {}
 
-  async calculate(
-    employeeId: string,
-    companyId: string,
-    rawPeriod: any,
-    options?: CalculateOptions,
-  ) {
+  async calculate(employeeId: string, companyId: string, rawPeriod: any) {
     try {
       const initialDateObj = convertDateToUTC(rawPeriod.initialDate);
       const endDateObj = convertDateToUTC(rawPeriod.endDate);
@@ -78,21 +66,6 @@ export class PayrollService {
       );
 
       const conceptsCompany = await this.conceptService.getConcepts(companyId);
-
-      let liquidationId: string | undefined;
-      if (options?.type === 'liquidation') {
-        const header = this.liquidationRepository.create({
-          employee_id: employeeId,
-          company_id: companyId,
-          period_id: period.id,
-          termination_date: period.endDate,
-          cause_liquidation_id: options.causeLiquidationId,
-          type: 'liquidation',
-        });
-        const saved = await this.liquidationRepository.save(header);
-        liquidationId = saved.id;
-      }
-
       const movementContext = new PayrollCalculationContext(
         employeeId,
         companyId,
@@ -119,32 +92,27 @@ export class PayrollService {
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       context.rawSalary = rawSalary;
       await this.calculateSocialSecurity(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.transportCalculator.calculate(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.calculateProvisions(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
       await this.calculateEnjoyedVacations(
         context,
         conceptsCompany.conceptMap,
         movementContext,
-        liquidationId,
       );
     } catch (error) {
       const errorMessage =
@@ -189,7 +157,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     const {
       movements: excess1393Movements,
@@ -238,8 +205,6 @@ export class PayrollService {
     );
 
     const mutableMovements = [...calculateMovements.movements];
-    if (liquidationId)
-      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }
@@ -248,7 +213,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     this.logger.log(
       `Calculating provisions for employee ${context.employeeId}`,
@@ -295,16 +259,7 @@ export class PayrollService {
     calculateMovements.addMovements(bonusPaymentProvisions);
     calculateMovements.addMovements(vacationsProvisionsMovements);
 
-    let mutableMovements = [...(calculateMovements.movements ?? [])];
-    if (liquidationId) {
-      // Apply liquidation concept mapping
-      mutableMovements = this.applyLiquidationConcepts(
-        mutableMovements,
-        conceptsMap,
-      );
-      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
-    }
-
+    const mutableMovements = [...(calculateMovements.movements ?? [])];
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }
@@ -313,7 +268,6 @@ export class PayrollService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
-    liquidationId?: string,
   ) {
     this.logger.log(
       `Calculating vacation provisions for employee ${context.employeeId}`,
@@ -334,40 +288,8 @@ export class PayrollService {
         context,
         conceptsMap,
       );
-    if (liquidationId)
-      enjoyedMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(enjoyedMovements);
 
     calculateMovements.clearMovements();
   }
-
-  private applyLiquidationConcepts(
-    movements: Movement[],
-    conceptsMap: Map<string, string>,
-  ): Movement[] {
-    // Reverse conceptsMap to lookup code by concept_id
-    const reverseConceptsMap = new Map<string, string>(
-      [...conceptsMap.entries()].map(([code, id]) => [id, code]),
-    );
-
-    return movements.map((movement) => {
-      const code = reverseConceptsMap.get(movement.concept_id);
-      const liquidationCode = this.LIQUIDATION_CONCEPT_MAP[code];
-
-      if (liquidationCode) {
-        const newConceptId = conceptsMap.get(liquidationCode);
-        if (newConceptId) {
-          return { ...movement, concept_id: newConceptId };
-        }
-      }
-      return movement;
-    });
-  }
-
-  private readonly LIQUIDATION_CONCEPT_MAP: Record<string, string> = {
-    '/136': 'M037', // Nuevo Saldo Cesantias → Cesantias Definitivas
-    '/140': 'M038', // Nuevo Saldo Int Cesantias → Int Cesantias Definitivas
-    '/129': 'M032', // Nuevo Saldo Prima Legal → Prima Legal de Servicio
-    '/144': 'M036', // Nuevo Saldo Vacaciones → Vacaciones compensadas
-  };
 }

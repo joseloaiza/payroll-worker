@@ -5,6 +5,8 @@ export class CreatePayrollJobdDto {
   processedCount?: number;
   failedCount?: number;
   status?: 'processing' | 'completed' | 'completed_with_errors' | 'failed';
+  type?: string;
+  cause_liquidation_id?: string;
   periodData: {
     id: string;
     number: number;

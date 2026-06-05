@@ -26,6 +26,7 @@ export class TransportCalculatorService {
     context: PayrollContext,
     conceptsMap: Map<string, string>,
     calculateMovements: PayrollCalculationContext,
+    liquidationId?: string,
   ): Promise<void> {
     this.logger.log(
       `Calculating transort asistance for employee ${context.employeeId}`,
@@ -39,6 +40,8 @@ export class TransportCalculatorService {
     );
 
     const mutableMovements = [...calculateMovements.movements];
+    if (liquidationId)
+      mutableMovements.forEach((m) => (m.liquidation_id = liquidationId));
     await this.movementService.saveMovements(mutableMovements);
     calculateMovements.clearMovements();
   }

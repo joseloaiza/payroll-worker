@@ -7,4 +7,5 @@ export class CreateMovementDto {
   year: number;
   month: number;
   company_id: string;
+  liquidation_id?: string;
 }

@@ -50,4 +50,10 @@ export class PayrollJob extends AbstractEntity {
 
   @Column({ nullable: true })
   completedAt: Date;
+
+  @Column({ nullable: true, default: 'payroll', length: 50 })
+  type?: string;
+
+  @Column({ nullable: true })
+  cause_liquidation_id?: string;
 }
